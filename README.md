@@ -1,4 +1,4 @@
-# d0 — Natural Language SQL Agent
+# p0 — Natural Language SQL Agent
 
 > A forkable template for building an AI agent that turns plain English into SQL queries. Ask questions, get insights and charts from your Postgres database.
 
@@ -65,8 +65,8 @@ Four layers of protection:
 ### 1. Clone and install
 
 ```bash
-git clone <this-repo>
-cd d0-template
+git clone https://github.com/pontiggia/p0-template.git
+cd p0-template
 pnpm install
 ```
 
