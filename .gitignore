@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+.next-docs/
+out/
+dist/
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Environment variables
+.env.local
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+error.txt
+plan.md
+prompt.txt
+
+# Claude files (optional - keep if you want to track plans)
+.claude/
+
+# Testing
+coverage/
+.nyc_output/
