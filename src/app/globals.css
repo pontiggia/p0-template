@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+:root {
+  /* Off-white background, soft neutral grays per design spec */
+  --background: #fafafa;
+  --foreground: #171717;
+
+  /* Neutral palette */
+  --gray-50: #f7f7f8;
+  --gray-100: #f0f0f1;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  /* Accent (subtle blue for user messages) */
+  --accent-50: #f0f7ff;
+  --accent-100: #e0efff;
+  --accent-500: #3b82f6;
+
+  /* Borders */
+  --border-color: #e5e7eb;
+
+  /* Shadcn compatibility */
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+
+  /* Chart colors */
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Dark mode - neutral ChatGPT-style dark palette */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #212121;
+    --foreground: #ececec;
+
+    --gray-50: #2f2f2f;
+    --gray-100: #3a3a3a;
+    --gray-200: #444444;
+    --gray-300: #525252;
+    --gray-400: #737373;
+    --gray-500: #a3a3a3;
+    --gray-600: #d4d4d4;
+    --gray-700: #e5e5e5;
+    --gray-800: #f5f5f5;
+    --gray-900: #fafafa;
+
+    --accent-50: #1a2332;
+    --accent-100: #1e3a5f;
+    --accent-500: #60a5fa;
+
+    --border-color: #3a3a3a;
+
+    /* Shadcn compatibility */
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --border: #334155;
+
+    /* Chart colors (dark mode) */
+    --chart-1: 220 70% 60%;
+    --chart-2: 160 60% 55%;
+    --chart-3: 30 80% 65%;
+    --chart-4: 280 65% 70%;
+    --chart-5: 340 75% 65%;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+/* Selection styling */
+::selection {
+  background: var(--accent-100);
+  color: var(--foreground);
+}
+
+/* Placeholder styling */
+::placeholder {
+  color: var(--gray-400);
+  opacity: 1;
+}
+
+/* Markdown rendering - hide empty elements during streaming */
+.markdown-content pre:empty,
+.markdown-content code:empty {
+  display: none;
+}
+
+/* Links in markdown - hover state */
+.markdown-content a:hover {
+  text-decoration: underline;
+}
