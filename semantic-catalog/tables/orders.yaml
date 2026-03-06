@@ -1,0 +1,214 @@
+name: orders
+schema: public
+description: "All customer orders with payment status and totals. Each order belongs to a customer and contains one or more order items. This is the primary table for revenue analytics and order tracking."
+row_count_estimate: 450000
+
+columns:
+  - name: id
+    type: uuid
+    nullable: false
+    default: gen_random_uuid()
+    description: "Primary key, auto-generated UUID"
+
+  - name: customer_id
+    type: uuid
+    nullable: false
+    foreign_key:
+      table: users
+      column: id
+      on_delete: CASCADE
+    description: "Reference to the user who placed this order"
+
+  - name: order_number
+    type: character varying
+    nullable: false
+    description: "Human-readable order identifier (e.g., ORD-2024-00001)"
+
+  - name: status
+    type: character varying
+    nullable: false
+    default: "'pending'::character varying"
+    description: "Current order status: pending, confirmed, shipped, delivered, cancelled, refunded"
+    enum_values: [pending, confirmed, shipped, delivered, cancelled, refunded]
+
+  - name: total_amount
+    type: numeric(10,2)
+    nullable: false
+    description: "Total order value in USD"
+
+  - name: shipping_address
+    type: text
+    nullable: true
+    description: "Delivery address for the order"
+
+  - name: payment_method
+    type: character varying
+    nullable: true
+    description: "Payment method used (credit_card, debit_card, paypal, bank_transfer)"
+
+  - name: notes
+    type: text
+    nullable: true
+    description: "Optional order notes from the customer"
+
+  - name: created_at
+    type: timestamp with time zone
+    nullable: false
+    default: now()
+    description: "When the order was placed"
+
+  - name: updated_at
+    type: timestamp with time zone
+    nullable: true
+    default: now()
+    description: "When this order record was last modified"
+
+indexes:
+  - name: orders_pkey
+    columns: [id]
+    unique: true
+    primary: true
+    description: "Primary key index"
+
+  - name: orders_order_number_key
+    columns: [order_number]
+    unique: true
+    description: "Ensures unique order numbers"
+
+  - name: idx_orders_customer_id
+    columns: [customer_id]
+    unique: false
+    description: "Fast lookups by customer"
+
+  - name: idx_orders_status
+    columns: [status]
+    unique: false
+    description: "Fast lookups by order status"
+
+  - name: idx_orders_created_at
+    columns: [created_at]
+    unique: false
+    description: "Fast lookups and sorting by order date"
+
+  - name: idx_orders_customer_created
+    columns: [customer_id, created_at DESC]
+    unique: false
+    description: "Fast lookups for customer's most recent orders"
+
+foreign_keys:
+  - table: users
+    column: id
+    local_column: customer_id
+    on_delete: CASCADE
+    relationship: many-to-one
+    description: "Each order belongs to exactly one user"
+
+referenced_by:
+  - table: order_items
+    column: order_id
+    relationship: one-to-many
+    description: "Each order has many order items"
+
+common_queries:
+  - name: "Get orders by customer"
+    description: "Retrieve all orders for a specific customer"
+    sql_pattern: |
+      SELECT * FROM orders
+      WHERE customer_id = '<user_uuid>'
+      ORDER BY created_at DESC;
+
+  - name: "Get recent orders"
+    description: "Get the most recent orders"
+    sql_pattern: |
+      SELECT o.*, u.name, u.email
+      FROM orders o
+      JOIN users u ON u.id = o.customer_id
+      ORDER BY o.created_at DESC
+      LIMIT 20;
+
+  - name: "Get daily order count and revenue"
+    description: "Aggregate orders by day"
+    sql_pattern: |
+      SELECT
+        DATE(created_at) as day,
+        COUNT(*) as order_count,
+        SUM(total_amount) as revenue
+      FROM orders
+      WHERE status NOT IN ('cancelled', 'refunded')
+        AND created_at > CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY DATE(created_at)
+      ORDER BY day DESC;
+
+  - name: "Get orders by status"
+    description: "Count orders by their current status"
+    sql_pattern: |
+      SELECT status, COUNT(*) as count, SUM(total_amount) as total
+      FROM orders
+      GROUP BY status
+      ORDER BY count DESC;
+
+  - name: "Get top customers by revenue"
+    description: "Find highest-spending customers"
+    sql_pattern: |
+      SELECT
+        u.name,
+        u.email,
+        COUNT(o.id) as total_orders,
+        SUM(o.total_amount) as total_revenue
+      FROM orders o
+      JOIN users u ON u.id = o.customer_id
+      WHERE o.status NOT IN ('cancelled', 'refunded')
+      GROUP BY u.id, u.name, u.email
+      ORDER BY total_revenue DESC
+      LIMIT 10;
+
+measures:
+  - name: total_orders
+    sql: "COUNT(*)"
+    description: "Total number of orders"
+
+  - name: total_revenue
+    sql: "SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded'))"
+    description: "Total revenue excluding cancelled and refunded orders"
+
+  - name: average_order_value
+    sql: "AVG(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded'))"
+    description: "Average order value (AOV)"
+
+  - name: orders_today
+    sql: "COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)"
+    description: "Orders placed today"
+
+  - name: cancelled_rate
+    sql: "COUNT(*) FILTER (WHERE status = 'cancelled')::numeric / NULLIF(COUNT(*), 0)"
+    description: "Percentage of orders that were cancelled"
+
+dimensions:
+  - name: by_date
+    sql: "GROUP BY DATE(created_at)"
+    description: "Aggregate metrics by order date"
+
+  - name: by_status
+    sql: "GROUP BY status"
+    description: "Aggregate metrics by order status"
+
+  - name: by_customer
+    sql: "GROUP BY customer_id"
+    description: "Aggregate metrics by customer"
+
+  - name: by_month
+    sql: "GROUP BY DATE_TRUNC('month', created_at)"
+    description: "Aggregate metrics by month"
+
+  - name: by_payment_method
+    sql: "GROUP BY payment_method"
+    description: "Aggregate metrics by payment method"
+
+business_rules:
+  - "Revenue calculations should ALWAYS exclude orders with status 'cancelled' or 'refunded'"
+  - "Each order has a unique order_number for human reference"
+  - "Deleting a user cascades to delete all their orders"
+  - "Deleting an order cascades to delete all its order_items"
+  - "Default order status is 'pending' when created"
+  - "Status transitions: pending → confirmed → shipped → delivered"
+  - "Cancelled and refunded are terminal states"

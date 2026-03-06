@@ -1,0 +1,134 @@
+name: users
+schema: public
+description: "Customer information including name, email, signup date, and country. Each user represents a registered customer who can place orders."
+row_count_estimate: 10000
+
+columns:
+  - name: id
+    type: uuid
+    nullable: false
+    default: gen_random_uuid()
+    description: "Primary key, auto-generated UUID"
+
+  - name: name
+    type: character varying
+    nullable: false
+    description: "Full name of the customer"
+
+  - name: email
+    type: character varying
+    nullable: false
+    description: "Email address (unique per user)"
+
+  - name: country
+    type: character varying
+    nullable: true
+    description: "Country where the customer is located"
+
+  - name: phone
+    type: character varying
+    nullable: true
+    description: "Phone number (optional)"
+
+  - name: created_at
+    type: timestamp with time zone
+    nullable: false
+    default: now()
+    description: "When the user registered"
+
+  - name: updated_at
+    type: timestamp with time zone
+    nullable: true
+    default: now()
+    description: "When this user record was last modified"
+
+indexes:
+  - name: users_pkey
+    columns: [id]
+    unique: true
+    primary: true
+    description: "Primary key index"
+
+  - name: users_email_key
+    columns: [email]
+    unique: true
+    description: "Ensures unique email addresses"
+
+  - name: idx_users_country
+    columns: [country]
+    unique: false
+    description: "Fast lookups by country"
+
+  - name: idx_users_created_at
+    columns: [created_at]
+    unique: false
+    description: "Fast lookups and sorting by signup date"
+
+constraints:
+  - name: users_email_unique
+    type: unique
+    definition: "email IS UNIQUE"
+    description: "Ensures no duplicate email addresses"
+
+foreign_keys: []
+
+referenced_by:
+  - table: orders
+    column: customer_id
+    relationship: one-to-many
+    description: "Each user can have many orders"
+
+common_queries:
+  - name: "Get user by email"
+    description: "Find a user by their email address"
+    sql_pattern: |
+      SELECT * FROM users
+      WHERE email = 'user@example.com';
+
+  - name: "Get users by country"
+    description: "Find all users in a specific country"
+    sql_pattern: |
+      SELECT * FROM users
+      WHERE country ILIKE '%country_name%'
+      ORDER BY created_at DESC;
+
+  - name: "Get recently signed up users"
+    description: "Get users who signed up in the last 30 days"
+    sql_pattern: |
+      SELECT * FROM users
+      WHERE created_at > CURRENT_DATE - INTERVAL '30 days'
+      ORDER BY created_at DESC;
+
+  - name: "Get top customers by order count"
+    description: "Find most active customers"
+    sql_pattern: |
+      SELECT u.*, COUNT(o.id) as order_count
+      FROM users u
+      JOIN orders o ON o.customer_id = u.id
+      WHERE o.status NOT IN ('cancelled', 'refunded')
+      GROUP BY u.id
+      ORDER BY order_count DESC
+      LIMIT 20;
+
+measures:
+  - name: total_users
+    sql: "COUNT(*)"
+    description: "Total number of registered users"
+
+  - name: active_users
+    sql: "COUNT(*) FILTER (WHERE id IN (SELECT customer_id FROM orders WHERE created_at > NOW() - INTERVAL '30 days'))"
+    description: "Users who placed an order in the last 30 days"
+
+  - name: users_by_country
+    sql: "COUNT(*) GROUP BY country"
+    description: "User count broken down by country"
+
+  - name: new_users_today
+    sql: "COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE)"
+    description: "Users who signed up today"
+
+business_rules:
+  - "Each user is uniquely identified by their email address"
+  - "Email addresses are case-insensitive (use ILIKE for matching)"
+  - "User deletion should be handled carefully due to order history references"
+  - "Country field is optional but recommended for analytics"

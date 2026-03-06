@@ -1,0 +1,114 @@
+enum_types:
+  note: "Postgres database does not define custom ENUM types in the public schema. Enumerations are enforced through check constraints, default values, or application logic."
+
+# Implicit enumerations (enforced by check constraints, defaults, or application logic)
+
+implicit_enums:
+  order_status:
+    table: orders
+    column: status
+    type: character varying
+    values:
+      - value: pending
+        description: "Order placed, awaiting processing"
+      - value: confirmed
+        description: "Order confirmed and being prepared"
+      - value: shipped
+        description: "Order shipped, in transit to customer"
+      - value: delivered
+        description: "Order successfully delivered"
+      - value: cancelled
+        description: "Order cancelled - EXCLUDE from revenue calculations"
+      - value: refunded
+        description: "Order refunded - EXCLUDE from revenue calculations"
+    notes:
+      - "Default value is 'pending'"
+      - "Status transitions: pending → confirmed → shipped → delivered"
+      - "Cancelled and refunded are terminal states"
+      - "Always exclude 'cancelled' and 'refunded' from revenue calculations"
+
+  payment_methods:
+    table: orders
+    column: payment_method
+    type: character varying
+    values:
+      - value: credit_card
+        description: "Credit card payment"
+      - value: debit_card
+        description: "Debit card payment"
+      - value: paypal
+        description: "PayPal payment"
+      - value: bank_transfer
+        description: "Direct bank transfer"
+    notes:
+      - "Can be null if payment method not yet selected"
+      - "Not enforced by CHECK constraint"
+
+  product_categories:
+    table: products
+    column: category
+    type: character varying
+    common_values:
+      - Electronics
+      - Clothing
+      - Home & Garden
+      - Books
+      - Sports
+      - Food & Beverage
+      - Health & Beauty
+      - Toys
+    notes:
+      - "Not a closed enumeration, new categories can be added"
+      - "Can be null"
+      - "Use ILIKE for case-insensitive matching"
+
+  countries:
+    table: users
+    column: country
+    type: character varying
+    common_values:
+      - value: United States
+        description: "Primary market"
+      - value: Canada
+        description: "North American market"
+      - value: United Kingdom
+        description: "European market"
+      - value: Germany
+        description: "European market"
+      - value: Australia
+        description: "APAC market"
+    notes:
+      - "Not a closed enumeration, any country value accepted"
+      - "Can be null"
+
+  product_stock_status:
+    table: products
+    column: in_stock
+    type: boolean
+    values:
+      - value: true
+        description: "Product is available for purchase"
+      - value: false
+        description: "Product is out of stock"
+    notes:
+      - "Default value is true"
+      - "Boolean type, not enum"
+
+validation_queries:
+  find_invalid_order_status:
+    sql: |
+      SELECT DISTINCT status FROM orders
+      WHERE status NOT IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded');
+
+  find_orders_without_items:
+    sql: |
+      SELECT o.id, o.order_number, o.total_amount
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE oi.id IS NULL;
+
+  find_products_without_category:
+    sql: |
+      SELECT id, name, sku
+      FROM products
+      WHERE category IS NULL;

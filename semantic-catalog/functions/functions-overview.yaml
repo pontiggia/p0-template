@@ -1,0 +1,47 @@
+functions_summary:
+  total_functions: 1
+  schema: public
+  description: "Stored procedures and functions for secure data access"
+
+function_categories:
+  query_execution:
+    count: 1
+    description: "Functions for safe, read-only SQL execution"
+    functions:
+      - name: execute_readonly_sql
+        description: "Execute read-only SQL queries with safety checks"
+        input: "SQL query string (text)"
+        output: "JSONB array of result rows"
+        security: "SECURITY DEFINER with statement_timeout = 5s"
+        safety_checks:
+          - "Blocks write operations (INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, REVOKE)"
+          - "Blocks dangerous patterns (multiple statements, outfile, load_file, pg_sleep, dblink)"
+          - "Enforces 1000 row limit per query"
+          - "5 second timeout on all queries"
+        notes:
+          - "This function is the ONLY way the agent executes SQL"
+          - "Access restricted to service_role only"
+          - "All agent queries are guaranteed read-only through this function"
+
+  triggers:
+    count: 1
+    description: "Trigger functions for automatic updates"
+    functions:
+      - name: update_timestamp
+        description: "Update updated_at timestamp on row modification"
+        trigger: "BEFORE UPDATE"
+        updates: "updated_at = NOW()"
+
+common_usage_patterns:
+  agent_query:
+    - "1. Agent receives natural language question"
+    - "2. Agent explores semantic catalog via executeCommand tool"
+    - "3. Agent writes SQL based on verified column names and joins"
+    - "4. SQL executed via execute_readonly_sql() RPC function"
+    - "5. Results returned as JSONB and formatted for user"
+
+function_calling_examples:
+  execute_query:
+    sql: |
+      -- Execute a read-only query through the safety function
+      SELECT execute_readonly_sql('SELECT COUNT(*) as total FROM orders');

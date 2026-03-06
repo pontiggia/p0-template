@@ -1,0 +1,154 @@
+name: products
+schema: public
+description: "Product catalog with pricing, category, and inventory status. Each product can appear in many order items across different orders."
+row_count_estimate: 500
+
+columns:
+  - name: id
+    type: uuid
+    nullable: false
+    default: gen_random_uuid()
+    description: "Primary key, auto-generated UUID"
+
+  - name: name
+    type: character varying
+    nullable: false
+    description: "Product display name"
+
+  - name: sku
+    type: character varying
+    nullable: false
+    description: "Unique Stock Keeping Unit identifier"
+
+  - name: description
+    type: text
+    nullable: true
+    description: "Detailed product description"
+
+  - name: price
+    type: numeric(10,2)
+    nullable: false
+    description: "Current list price in USD"
+
+  - name: category
+    type: character varying
+    nullable: true
+    description: "Product category (Electronics, Clothing, Home & Garden, etc.)"
+
+  - name: in_stock
+    type: boolean
+    nullable: false
+    default: true
+    description: "Whether the product is currently available for purchase"
+
+  - name: stock_quantity
+    type: integer
+    nullable: true
+    default: 0
+    description: "Current inventory count"
+
+  - name: created_at
+    type: timestamp with time zone
+    nullable: false
+    default: now()
+    description: "When the product was first added to the catalog"
+
+  - name: updated_at
+    type: timestamp with time zone
+    nullable: true
+    default: now()
+    description: "When this product record was last modified"
+
+indexes:
+  - name: products_pkey
+    columns: [id]
+    unique: true
+    primary: true
+    description: "Primary key index"
+
+  - name: products_sku_key
+    columns: [sku]
+    unique: true
+    description: "Ensures unique SKU values"
+
+  - name: idx_products_category
+    columns: [category]
+    unique: false
+    description: "Fast lookups by category"
+
+  - name: idx_products_price
+    columns: [price]
+    unique: false
+    description: "Fast lookups by price range"
+
+foreign_keys: []
+
+referenced_by:
+  - table: order_items
+    column: product_id
+    relationship: one-to-many
+    description: "Each product can appear in many order items"
+
+common_queries:
+  - name: "Get products by category"
+    description: "Find all products in a specific category"
+    sql_pattern: |
+      SELECT * FROM products
+      WHERE category ILIKE '%category_name%'
+      ORDER BY name;
+
+  - name: "Get in-stock products"
+    description: "Find all available products"
+    sql_pattern: |
+      SELECT * FROM products
+      WHERE in_stock = true
+      ORDER BY name;
+
+  - name: "Get best-selling products"
+    description: "Find products with highest sales"
+    sql_pattern: |
+      SELECT
+        p.name,
+        p.category,
+        p.price,
+        SUM(oi.quantity) as units_sold,
+        SUM(oi.quantity * oi.unit_price) as total_revenue
+      FROM products p
+      JOIN order_items oi ON oi.product_id = p.id
+      JOIN orders o ON o.id = oi.order_id
+      WHERE o.status NOT IN ('cancelled', 'refunded')
+      GROUP BY p.id, p.name, p.category, p.price
+      ORDER BY total_revenue DESC
+      LIMIT 20;
+
+  - name: "Get products by price range"
+    description: "Find products within a price range"
+    sql_pattern: |
+      SELECT * FROM products
+      WHERE price BETWEEN 10 AND 100
+        AND in_stock = true
+      ORDER BY price ASC;
+
+measures:
+  - name: total_products
+    sql: "COUNT(*)"
+    description: "Total number of products in catalog"
+
+  - name: in_stock_count
+    sql: "COUNT(*) FILTER (WHERE in_stock = true)"
+    description: "Number of products currently in stock"
+
+  - name: average_price
+    sql: "AVG(price)"
+    description: "Average product price"
+
+  - name: products_by_category
+    sql: "COUNT(*) GROUP BY category"
+    description: "Product count broken down by category"
+
+business_rules:
+  - "Each product has a unique SKU identifier"
+  - "Price is stored in USD with 2 decimal places"
+  - "in_stock defaults to true when a product is created"
+  - "Products should not be deleted if they have order history - mark as out of stock instead"
+  - "Use ILIKE for case-insensitive product name searches"

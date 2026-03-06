@@ -1,0 +1,105 @@
+name: monthly_revenue
+schema: public
+type: view
+description: "Monthly aggregated revenue view providing order counts, total revenue, average order value, and unique customer counts per month. This is the primary view for high-level business performance tracking."
+
+base_tables:
+  - orders
+  - users (joined for customer counts)
+
+columns:
+  - name: month
+    type: date
+    description: "First day of the month (truncated from order dates)"
+    source: DATE_TRUNC('month', orders.created_at)
+
+  - name: total_orders
+    type: bigint
+    description: "Number of orders placed in this month"
+    source: COUNT(orders.id)
+
+  - name: total_revenue
+    type: numeric
+    description: "Sum of order totals for this month (excludes cancelled/refunded)"
+    source: SUM(orders.total_amount)
+
+  - name: avg_order_value
+    type: numeric
+    description: "Average order value for this month"
+    source: AVG(orders.total_amount)
+
+  - name: unique_customers
+    type: bigint
+    description: "Number of distinct customers who placed orders"
+    source: COUNT(DISTINCT orders.customer_id)
+
+  - name: new_customers
+    type: bigint
+    calculated: true
+    description: "Customers whose first-ever order was in this month"
+
+view_definition_sql: |
+  SELECT
+    DATE_TRUNC('month', o.created_at)::date as month,
+    COUNT(o.id) as total_orders,
+    SUM(o.total_amount) as total_revenue,
+    AVG(o.total_amount) as avg_order_value,
+    COUNT(DISTINCT o.customer_id) as unique_customers,
+    COUNT(DISTINCT o.customer_id) FILTER (
+      WHERE o.customer_id NOT IN (
+        SELECT customer_id FROM orders
+        WHERE created_at < DATE_TRUNC('month', o.created_at)
+      )
+    ) as new_customers
+  FROM orders o
+  WHERE o.status NOT IN ('cancelled', 'refunded')
+  GROUP BY DATE_TRUNC('month', o.created_at)
+  ORDER BY month DESC;
+
+common_queries:
+  - name: "Get last 12 months revenue"
+    description: "Monthly revenue for the past year"
+    sql: |
+      SELECT * FROM monthly_revenue
+      WHERE month >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
+      ORDER BY month ASC;
+
+  - name: "Get month-over-month growth"
+    description: "Compare each month to the previous month"
+    sql: |
+      SELECT
+        month,
+        total_revenue,
+        LAG(total_revenue) OVER (ORDER BY month) as prev_month_revenue,
+        ROUND(
+          (total_revenue - LAG(total_revenue) OVER (ORDER BY month))
+          / NULLIF(LAG(total_revenue) OVER (ORDER BY month), 0) * 100, 2
+        ) as growth_pct
+      FROM monthly_revenue
+      ORDER BY month DESC
+      LIMIT 12;
+
+  - name: "Get best month"
+    description: "Find the highest revenue month"
+    sql: |
+      SELECT * FROM monthly_revenue
+      ORDER BY total_revenue DESC
+      LIMIT 1;
+
+use_cases:
+  - "Executive dashboard monthly overview"
+  - "Revenue trend analysis"
+  - "Month-over-month growth tracking"
+  - "Customer acquisition monitoring"
+  - "Seasonal pattern identification"
+
+performance_notes:
+  - "This is a regular view, not materialized - recalculates on each query"
+  - "For very large datasets, consider materializing this view"
+  - "Most selective filter: month column"
+
+business_rules:
+  - "Revenue excludes cancelled and refunded orders"
+  - "Unique customers counted by distinct customer_id per month"
+  - "New customers = those with no orders before this month"
+  - "AOV = total_revenue / total_orders"
