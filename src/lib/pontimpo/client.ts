@@ -19,7 +19,13 @@ import type {
  *   (message is es-AR and safe to show the user)
  */
 
+const PONTIMPO_ERROR_MARKER = '__isPontimpoApiError';
+
 export class PontimpoApiError extends Error {
+  /** Stable marker so detection survives duplicate module instances (instanceof
+   *  is unreliable across bundler/tsx boundaries). */
+  readonly [PONTIMPO_ERROR_MARKER] = true as const;
+
   constructor(
     readonly code: string,
     /** es-AR, user-safe */
@@ -28,6 +34,14 @@ export class PontimpoApiError extends Error {
   ) {
     super(`${code}: ${userMessage}`);
     this.name = 'PontimpoApiError';
+  }
+
+  static is(err: unknown): err is PontimpoApiError {
+    return (
+      typeof err === 'object' &&
+      err !== null &&
+      (err as Record<string, unknown>)[PONTIMPO_ERROR_MARKER] === true
+    );
   }
 }
 

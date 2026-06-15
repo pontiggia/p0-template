@@ -4,6 +4,7 @@ import { verifyKapsoSignature } from '@/lib/whatsapp/verify';
 import { parseInbound, type InboundMessage } from '@/lib/whatsapp/inbound';
 import { sendText } from '@/lib/whatsapp/client';
 import { getSessionStore } from '@/lib/session/store';
+import { processInbound } from '@/lib/agent/process';
 
 // Node runtime (crypto + pg). Must match/exceed the chat route's budget so
 // waitUntil work isn't killed mid-flight.
@@ -62,8 +63,11 @@ export async function POST(req: NextRequest): Promise<Response> {
 }
 
 /**
- * Async pipeline. Phase 9.1 echoes the message; 9.3–9.5 replace the body with
- * identity resolution + the agent loop + the confirmation state machine.
+ * Async pipeline: identity → lock → load thread → confirm/cancel/agent →
+ * persist → reply (all in processInbound). A thrown error always yields a
+ * generic es-AR message; the dedupe key is marked `done` so a redelivery of the
+ * same message doesn't reprocess (per-step idempotency keys make a re-confirm
+ * safe regardless).
  */
 async function processMessage(
   inbound: InboundMessage,
@@ -71,11 +75,7 @@ async function processMessage(
 ): Promise<void> {
   const store = getSessionStore();
   try {
-    const text =
-      inbound.kind === 'text'
-        ? `eco: ${inbound.text}`
-        : `eco botón: ${inbound.buttonId}`;
-    await sendText(inbound.from, text);
+    await processInbound(inbound);
   } catch (err) {
     console.error('[kapso webhook] processing error:', err);
     try {
