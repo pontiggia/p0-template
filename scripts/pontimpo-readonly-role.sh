@@ -21,7 +21,12 @@ psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$D0/rpc-function.sql" >/dev/null
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -v role="$ROLE" -v pw="$AGENT_RO_PASSWORD" -v db="$DB" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN', :'role')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') \gexec
-SELECT format('ALTER ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', :'role', :'pw') \gexec
+-- Only LOGIN + PASSWORD: restating NOSUPERUSER etc. needs a superuser, which a
+-- managed provider's owner role is not. The role must hold none of them:
+SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'role', :'pw') \gexec
+SELECT $x$DO $d$ BEGIN RAISE EXCEPTION 'role is privileged (superuser/createdb/createrole/replication/bypassrls): refusing'; END $d$$x$
+  FROM pg_roles WHERE rolname = :'role'
+   AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls) \gexec
 -- Belt and braces: every session of this role starts read-only.
 SELECT format('ALTER ROLE %I SET default_transaction_read_only = on', :'role') \gexec
 
