@@ -41,7 +41,7 @@ async function mint(name: string, scopes: string[]) {
 }
 
 // API_SPEC §3 Phase-1 agent credential — exactly this set, nothing more.
-const PHASE_1 = ["metrics:read", "sales:read", "sales:correct", "payments:write", "clients:read", "ledger:read", "audit:read"];
+const PHASE_1 = ["metrics:read", "sales:read", "sales:correct", "payments:write", "clients:read", "ledger:read", "audit:read", "products:read"];
 
 const agentKey = await mint("S6 test — agente WhatsApp (Phase-1)", PHASE_1);
 // Lacks every write scope: drives the scope-refusal path.

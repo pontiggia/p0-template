@@ -22,8 +22,10 @@ import {
 } from '../helpers/pontimpo';
 
 const LIVE = Boolean(process.env.ANTHROPIC_API_KEY);
+// PONTIMPO_TARGET=dev runs test/live/dev-data.live.test.ts instead.
+const HERMETIC = process.env.PONTIMPO_TARGET !== 'dev';
 
-describe.skipIf(!LIVE)('seven mutating recipes through the live agent', () => {
+describe.skipIf(!LIVE || !HERMETIC)('seven mutating recipes through the live agent', () => {
   let processInbound: typeof import('@/lib/agent/process').processInbound;
   let getSessionStore: typeof import('@/lib/session/store').getSessionStore;
   let kapso: KapsoStub;

@@ -43,3 +43,12 @@ Same as the Pontimpo repo: `eslint-plugin-react` 7.37.5 (`… ^9.7`), `eslint-pl
 | `pnpm test` | Hermetic suite: no LLM (scripted `MockLanguageModelV4`), Kapso = local stub, loopback-only fetch guard | `pnpm pontimpo:up` |
 | `pnpm test:live` | The seven mutating recipes through the real agent loop | `ANTHROPIC_API_KEY` (skipped without it) + `pnpm pontimpo:up` |
 | `pnpm pontimpo:down` | Stop the server, drop the DB, delete `.env.test.local` | |
+| `PONTIMPO_TARGET=dev pnpm test:live` | `test/live/dev-data.live.test.ts`: the seven recipes + the §13 hard paths through the real agent loop against the **local `pontimpo_dev`** (migrated real data, app on `:3201`). Asserts every ledger / cash / stock / audit row each recipe wrote to store 1. Mutates the real records it names (one-shot per `pontimpo_dev` snapshot) | `ANTHROPIC_API_KEY` + `.env.dev-live.local` (below) |
+
+### Live run against the local `pontimpo_dev` (S6, 2026-11-07)
+
+`.env.dev-live.local` (gitignored, 0600, never committed) holds `PONTIMPO_API_URL`, `PONTIMPO_STORE_ID=1`, the Phase-1 key and a harness key (minted by `scripts/mint-pontimpo-dev-credentials.mts` through Pontimpo's own `createCredential`, as `superadmin@test.local`), `DATABASE_URL` as the read-only role, and `STAFF_ALLOWLIST` mapping the fake `5490000000001` to a real Las Flores admin as `on_behalf_of` (`test/setup.ts` refuses any number not shaped `549000000xxxx`).
+
+**Read-only role `pontimpo_agent_ro`** (`scripts/pontimpo-readonly-role.sh <db>`, idempotent; password only in the env file): LOGIN, `default_transaction_read_only = on`, `CONNECT` + `USAGE` on `public` + `SELECT` on every table except `auth_*`, `api_credential`, `idempotency_key`; `EXECUTE` on `execute_readonly_sql` (revoked from `PUBLIC`). `rpc-function.sql` is now **`SECURITY INVOKER`** — with `SECURITY DEFINER` every agent query ran as the function's owner (a superuser locally) and the role's grants meant nothing. INSERT/UPDATE as the role fail with `cannot execute … in a read-only transaction` / `permission denied for table …`.
+
+**No Vercel Sandbox locally**: when neither `VERCEL_SANDBOX_TOKEN` nor `VERCEL_OIDC_TOKEN` is set (the deploy gets OIDC automatically, so it keeps the Sandbox), `executeCommand` runs the same whitelisted commands with `execFile` (no shell) in `./semantic-catalog`, `/tmp/catalog` mapped onto it, rejecting absolute paths, `..`, `~` and `find -exec/-delete/-fprint*` (`test/sandbox-local.test.ts`). SQL always goes through `DATABASE_URL`.

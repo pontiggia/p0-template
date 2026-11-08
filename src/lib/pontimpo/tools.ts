@@ -6,6 +6,7 @@ import {
   getClient,
   getClientLedger,
   getClients,
+  getProducts,
   getSale,
   getSales,
 } from './client';
@@ -82,7 +83,8 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
   });
 
   const getClientTool = tool({
-    description: 'Detalle de un cliente por id interno, con deuda/crédito derivados.',
+    description:
+      'Detalle de un cliente por su id INTERNO (el campo id de findClients), con deuda/crédito derivados. El "número de cliente" que dice el staff NO es el id interno: buscalo primero con findClients.',
     inputSchema: z.object({ clientId: z.number().int(), reasoning }),
     execute: async ({ clientId }) => {
       const c = await getClient(clientId);
@@ -161,7 +163,7 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
             sale_item_id: i.id,
             kind: i.kind,
             product_id: i.product_id,
-            descripcion: i.description,
+            descripcion: i.display_description ?? i.description,
             cantidad: i.quantity,
             precio_unitario: formatCentavos(i.unit_price_centavos),
             precio_unitario_centavos: i.unit_price_centavos,
@@ -189,6 +191,28 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
     execute: async ({ entityType, entityId, action }) => {
       const res = await getAuditEvents({ entityType, entityId, action });
       return { success: true, events: res.data };
+    },
+  });
+
+  const findProducts = tool({
+    description:
+      'Buscar productos por código, nombre o detalle (medida/marca). Devuelve id interno, precio y stock. Usalo para encontrar el producto correcto antes de swapSaleLine (R12).',
+    inputSchema: z.object({ search: z.string().min(1), reasoning }),
+    execute: async ({ search }) => {
+      const res = await getProducts(search);
+      return {
+        success: true,
+        products: res.data.slice(0, 20).map((p) => ({
+          id: p.id,
+          codigo: p.code,
+          nombre: p.name,
+          detalle: p.details,
+          precio: formatCentavos(p.price_centavos),
+          precio_centavos: p.price_centavos,
+          stock: p.quantity_on_hand,
+          activo: p.is_active,
+        })),
+      };
     },
   });
 
@@ -406,9 +430,10 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
         body.currency = 'USD';
         body.amount_usd_centavos = amountUsdCentavos;
         if (fxRateCentavos != null) body.fx_rate_centavos = fxRateCentavos;
+        const arsApprox = fxRateCentavos != null ? ` ≈ ${formatCentavos(usdToArs(amountUsdCentavos, fxRateCentavos))}` : '';
         summary = `Registrar pago de cliente de ${formatUsdCentavos(amountUsdCentavos)}${
           fxRateCentavos != null ? ` @ ${formatFxRate(fxRateCentavos)}` : ''
-        } (${paymentMethod}) al cliente (id ${clientId}).`;
+        }${arsApprox} (${paymentMethod}) al cliente (id ${clientId}).`;
       } else if (amountCentavos != null) {
         body.amount_centavos = amountCentavos;
         summary = `Registrar pago de cliente de ${formatCentavos(amountCentavos)} (${paymentMethod}) al cliente (id ${clientId}).`;
@@ -427,6 +452,7 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
     findSales,
     getSale: getSaleTool,
     getAuditEvents: getAuditEventsTool,
+    findProducts,
     resolveSaleByNumber: resolveSaleByNumberTool,
     resolveLedgerEntryByNumber: resolveLedgerEntryByNumberTool,
     cancelSale,

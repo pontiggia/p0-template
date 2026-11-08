@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Sandbox } from '@vercel/sandbox';
+import { execFile } from 'node:child_process';
+import path from 'node:path';
 import { getSemanticCatalogFiles } from './semantic-layer';
 import type { SemanticCatalogFiles } from './semantic-layer';
 
@@ -104,6 +106,10 @@ export async function executeShellCommand(
     };
   }
 
+  if (!hasVercelSandboxAuth()) {
+    return executeLocally(trimmedCommand);
+  }
+
   const sandboxResult = await getOrCreateSandbox();
   if (!sandboxResult.success) {
     return sandboxResult as any;
@@ -176,4 +182,57 @@ export async function destroySandbox(): Promise<void> {
     await sandboxInstance.stop();
     sandboxInstance = null;
   }
+}
+
+// ── Local fallback (no Vercel Sandbox credentials) ──────────────────────────
+//
+// Local runs (dev, the S6 live suite) have no VERCEL_SANDBOX_TOKEN and no
+// VERCEL_OIDC_TOKEN (the deploy gets the latter automatically, so the real
+// deploy keeps the Sandbox path). Then the same whitelisted, read-only commands
+// run directly against ./semantic-catalog: execFile (no shell), cwd pinned to
+// the catalog, `/tmp/catalog` rewritten to it, and no argument may leave it.
+// SQL is unaffected — it always goes through DATABASE_URL (a read-only role).
+
+const LOCAL_CATALOG_DIR = path.join(process.cwd(), 'semantic-catalog');
+const LOCAL_TIMEOUT_MS = 5_000;
+/** find actions that execute, delete or write files. */
+const FORBIDDEN_FIND_ARGS = /^-(exec|execdir|ok|okdir|delete|fprint0?|fprintf|fls)$/;
+
+function hasVercelSandboxAuth(): boolean {
+  return Boolean(process.env.VERCEL_SANDBOX_TOKEN || process.env.VERCEL_OIDC_TOKEN);
+}
+
+/** Map the sandbox mount path onto the local catalog; null if the arg escapes it. */
+function localArg(arg: string): string | null {
+  const mapped =
+    arg === CATALOG_PATH ? '.' : arg.startsWith(`${CATALOG_PATH}/`) ? arg.slice(CATALOG_PATH.length + 1) : arg;
+  if (mapped.startsWith('/') || mapped.startsWith('~')) return null;
+  if (mapped.split(/[/=]/).includes('..')) return null;
+  return mapped;
+}
+
+function executeLocally(command: string): Promise<SandboxResult<ShellCommandResult>> {
+  const [cmd, ...rawArgs] = command.split(/\s+/);
+  const args: string[] = [];
+  for (const raw of rawArgs) {
+    const arg = localArg(raw);
+    if (arg === null) {
+      return Promise.resolve({ success: false, error: `Path outside the catalog: "${raw}"` });
+    }
+    if (cmd === 'find' && FORBIDDEN_FIND_ARGS.test(arg)) {
+      return Promise.resolve({ success: false, error: `find action not allowed: "${arg}"` });
+    }
+    args.push(arg);
+  }
+  return new Promise((resolve) => {
+    execFile(
+      cmd,
+      args,
+      { cwd: LOCAL_CATALOG_DIR, timeout: LOCAL_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { NODE_ENV: process.env.NODE_ENV, PATH: process.env.PATH ?? '' }, encoding: 'utf8' },
+      (err, stdout, stderr) => {
+        const exitCode = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
+        resolve({ success: true, data: { stdout, stderr, exitCode } });
+      },
+    );
+  });
 }

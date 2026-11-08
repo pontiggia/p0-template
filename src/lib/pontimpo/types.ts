@@ -53,6 +53,8 @@ export interface SaleItem {
   readonly product_id: number | null;
   readonly service_id: number | null;
   readonly description: string;
+  /** description + the product's details (size/brand) — what the staff calls it */
+  readonly display_description?: string;
   readonly quantity: number;
   readonly unit_price_centavos: number;
   readonly list_price_centavos: number;
@@ -112,6 +114,20 @@ export interface ClientLedgerRow {
   readonly payment_method: PaymentMethod | null;
   readonly sale_id: number | null;
   readonly sale_local_id: number | null;
+}
+
+/** `GET /products` row (`products:read`) — R12 needs the replacement product. */
+export interface ProductRow {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+  readonly details: string | null;
+  readonly is_tire: boolean;
+  readonly location: string | null;
+  readonly quantity_on_hand: number;
+  readonly is_active: boolean;
+  readonly price_centavos: number;
+  readonly cost_centavos: number;
 }
 
 export interface Paginated<T> {

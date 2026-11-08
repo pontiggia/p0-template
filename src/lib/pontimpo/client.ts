@@ -5,6 +5,7 @@ import type {
   ClientLedgerRow,
   ClientSummary,
   Paginated,
+  ProductRow,
   SaleDetail,
   SaleListRow,
 } from './types';
@@ -125,6 +126,11 @@ export function getClient(id: number): Promise<ClientDetail> {
 
 export function getClientLedger(id: number): Promise<Paginated<ClientLedgerRow>> {
   return apiGet(`/clients/${id}/ledger`);
+}
+
+/** `GET /products?search=` — matches code, name or details (`products:read`). */
+export function getProducts(search: string): Promise<Paginated<ProductRow>> {
+  return apiGet(`/products?search=${encodeURIComponent(search)}`);
 }
 
 export function getSale(id: number): Promise<SaleDetail> {

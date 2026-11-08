@@ -64,7 +64,7 @@ describe('scope: what the Phase-1 agent can reach', () => {
 
   it('exposes reads + exactly the seven mutating recipes — no create-sale, stock, price or debt tool', () => {
     expect(Object.keys(tools).sort()).toEqual([
-      'cancelSale', 'correctSaleAmount', 'findClients', 'findSales', 'getAuditEvents', 'getClient',
+      'cancelSale', 'correctSaleAmount', 'findClients', 'findProducts', 'findSales', 'getAuditEvents', 'getClient',
       'getClientLedger', 'getSale', 'refundSale', 'registerClientPayment', 'registerSalePayment',
       'resolveLedgerEntryByNumber', 'resolveSaleByNumber', 'reversePayment', 'swapSaleLine',
     ]);

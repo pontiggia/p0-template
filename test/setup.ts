@@ -6,9 +6,13 @@ import { fileURLToPath } from 'node:url';
 // Sandbox, no Anthropic (except the opt-in live suite), loopback-only fetch.
 
 const LIVE = process.env.VITEST_LIVE === '1';
+// PONTIMPO_TARGET=dev: the live suite against the LOCAL pontimpo_dev (migrated
+// real data) — coordinates, the Phase-1 key, the read-only DATABASE_URL and the
+// (fake-number) allowlist all come from the gitignored .env.dev-live.local.
+const DEV = process.env.PONTIMPO_TARGET === 'dev';
 
 // The hermetic Pontimpo app's coordinates + keys (pnpm pontimpo:up writes it).
-const testEnv = fileURLToPath(new URL('../.env.test.local', import.meta.url));
+const testEnv = fileURLToPath(new URL(DEV ? '../.env.dev-live.local' : '../.env.test.local', import.meta.url));
 if (existsSync(testEnv)) process.loadEnvFile(testEnv);
 
 for (const name of [
@@ -29,13 +33,20 @@ process.env.KAPSO_PHONE_NUMBER_ID = 'stub-phone-number-id';
 process.env.KAPSO_WEBHOOK_SECRET = 'test-webhook-secret';
 
 // Fictitious numbers only — never a real staff number.
-process.env.STAFF_ALLOWLIST = JSON.stringify({
-  '5490000000001': { staffName: 'Oscar Prueba', onBehalfOf: 'oscar.prueba@test.local' },
-});
+if (DEV) {
+  const numbers = Object.keys(JSON.parse(process.env.STAFF_ALLOWLIST ?? '{}'));
+  if (numbers.length === 0 || !numbers.every((n) => /^549000000\d{4}$/.test(n))) {
+    throw new Error('dev target: STAFF_ALLOWLIST must map only fake 549000000xxxx numbers');
+  }
+} else {
+  process.env.STAFF_ALLOWLIST = JSON.stringify({
+    '5490000000001': { staffName: 'Oscar Prueba', onBehalfOf: 'oscar.prueba@test.local' },
+  });
+}
 
 // The agent talks to the hermetic app with the Phase-1 credential; the
 // number→PK resolver reads the same hermetic DB.
-if (process.env.PONTIMPO_TEST_AGENT_KEY) {
+if (!DEV && process.env.PONTIMPO_TEST_AGENT_KEY) {
   process.env.PONTIMPO_API_KEY = process.env.PONTIMPO_TEST_AGENT_KEY;
   process.env.DATABASE_URL = process.env.PONTIMPO_TEST_DATABASE_URL;
 }
