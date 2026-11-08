@@ -1,0 +1,12 @@
+table: product_price_history
+description: Historial de precio y costo de cada producto (una fila por cambio + una inicial de migración).
+store_scoped: true   # WHERE product_price_history.store_id = 1
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: product_id, type: bigint, description: "→ product.id" }
+  - { name: price_centavos, type: bigint, unit: centavos ARS }
+  - { name: cost_centavos, type: bigint, unit: centavos ARS }
+  - { name: reason, type: text, enum: [manual, bulk_absolute, bulk_percentage, migration] }
+  - { name: changed_by_user_id, type: bigint, nullable: true, description: "→ app_user.id" }
+  - { name: created_at, type: timestamptz, description: "cuándo cambió el precio" }

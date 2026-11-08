@@ -1,0 +1,25 @@
+metric: ganancia_neta
+label_es: Ganancia neta (también "ganancia bruta", "margen", "cuánto ganamos")
+source: METRICS_SPEC.md §2 — idéntico a GET /api/v1/metrics/summary → metrics.sales.netCentavos
+clock: sale.sale_date
+inclusion: "store_id = 1 AND sale.status IN ('pending','paid')"
+unit: centavos ARS
+definition: |
+  Líneas de PRODUCTO con costo conocido: Σ (unit_price_centavos − unit_cost_centavos) × quantity
+  + líneas de SERVICIO: Σ sale_item.total_centavos (los servicios son margen puro, no tienen costo).
+  Las líneas de producto con unit_cost_centavos IS NULL (12 filas históricas) se EXCLUYEN
+  y se informan aparte como "líneas sin costo".
+sql: |
+  SELECT
+    coalesce(sum((i.unit_price_centavos - i.unit_cost_centavos) * i.quantity)
+             FILTER (WHERE i.kind = 'product' AND i.unit_cost_centavos IS NOT NULL), 0)
+    + coalesce(sum(i.total_centavos) FILTER (WHERE i.kind = 'service'), 0)        AS ganancia_neta_centavos,
+    count(*) FILTER (WHERE i.kind = 'product' AND i.unit_cost_centavos IS NULL)    AS lineas_sin_costo
+  FROM sale_item i
+  JOIN sale s ON s.id = i.sale_id AND s.store_id = 1
+  WHERE i.store_id = 1
+    AND s.status IN ('pending', 'paid')
+    AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+    AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'
+notes:
+  - "unit_cost_centavos está congelado al momento de la venta (correcto con inflación): NO uses product.cost_centavos."

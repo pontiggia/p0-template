@@ -1,204 +1,43 @@
+# Cómo se relacionan las tablas. REGLA: en cada JOIN repetí store_id = 1 para cada tabla de dominio.
+
 relationships:
-  - from_table: orders
-    from_column: customer_id
-    to_table: users
-    to_column: id
-    type: many-to-one
-    cardinality: "N:1"
-    join_sql: "orders.customer_id = users.id"
-    description: "Each order belongs to exactly one user. Users can have many orders."
-    on_delete: CASCADE
+  - { from: sale.client_id,                to: client.id,              type: many_to_one }
+  - { from: sale.sold_by_user_id,          to: app_user.id,            type: many_to_one }
+  - { from: sale_item.sale_id,             to: sale.id,                type: many_to_one, note: "1..n líneas por venta (la mayoría tiene 1)" }
+  - { from: sale_item.product_id,          to: product.id,             type: many_to_one, note: "solo kind = 'product'" }
+  - { from: sale_item.service_id,          to: service.id,             type: many_to_one, note: "solo kind = 'service'" }
+  - { from: client_ledger_entry.client_id, to: client.id,              type: many_to_one }
+  - { from: client_ledger_entry.sale_id,   to: sale.id,                type: many_to_one, note: "NULL en pagos a cuenta y deudas iniciales" }
+  - { from: client_ledger_entry.reverses_entry_id, to: client_ledger_entry.id, type: one_to_one, note: "reversión R11 → pago original" }
+  - { from: cash_movement.ledger_entry_id, to: client_ledger_entry.id, type: many_to_one, note: "cobro de caja generado por un pago" }
+  - { from: cash_movement.reverses_movement_id, to: cash_movement.id,  type: one_to_one }
+  - { from: stock_movement.product_id,     to: product.id,             type: many_to_one }
+  - { from: stock_movement.sale_item_id,   to: sale_item.id,           type: many_to_one }
+  - { from: product_price_history.product_id, to: product.id,          type: many_to_one }
+  - { from: store_membership.user_id,      to: app_user.id,            type: many_to_one }
+  - { from: audit_event.actor_user_id,     to: app_user.id,            type: many_to_one }
 
-  - from_table: order_items
-    from_column: order_id
-    to_table: orders
-    to_column: id
-    type: many-to-one
-    cardinality: "N:1"
-    join_sql: "order_items.order_id = orders.id"
-    description: "Each order item belongs to exactly one order. Orders can have many items."
-    on_delete: CASCADE
+join_patterns:
+  lineas_con_su_venta: |
+    FROM sale_item i
+    JOIN sale s ON s.id = i.sale_id AND s.store_id = 1
+    WHERE i.store_id = 1 AND s.status IN ('pending','paid')
+  lineas_con_producto: |
+    FROM sale_item i
+    JOIN sale s    ON s.id = i.sale_id AND s.store_id = 1
+    JOIN product p ON p.id = i.product_id AND p.store_id = 1      -- LEFT JOIN si también querés servicios
+    WHERE i.store_id = 1 AND i.kind = 'product' AND s.status IN ('pending','paid')
+  ventas_con_cliente: |
+    FROM sale s
+    JOIN client c ON c.id = s.client_id AND c.store_id = 1
+    WHERE s.store_id = 1
+  saldo_por_cliente: |
+    FROM client_ledger_entry l
+    JOIN client c ON c.id = l.client_id AND c.store_id = 1
+    WHERE l.store_id = 1
+    GROUP BY c.id, c.local_id, c.name
 
-  - from_table: order_items
-    from_column: product_id
-    to_table: products
-    to_column: id
-    type: many-to-one
-    cardinality: "N:1"
-    join_sql: "order_items.product_id = products.id"
-    description: "Each order item references exactly one product. Products can appear in many order items."
-    on_delete: RESTRICT
-
-# Common join paths for complex queries
-join_paths:
-  - name: "Orders with customer info"
-    description: "Get orders with their customer details"
-    tables: [orders, users]
-    sql: |
-      SELECT o.*, u.name, u.email, u.country
-      FROM orders o
-      JOIN users u ON u.id = o.customer_id
-      ORDER BY o.created_at DESC;
-
-  - name: "Orders with line items"
-    description: "Get orders with their individual items"
-    tables: [orders, order_items, products]
-    sql: |
-      SELECT
-        o.id as order_id,
-        o.order_number,
-        o.created_at,
-        o.total_amount,
-        p.name as product_name,
-        p.category,
-        oi.quantity,
-        oi.unit_price,
-        (oi.quantity * oi.unit_price) as line_total
-      FROM orders o
-      JOIN order_items oi ON oi.order_id = o.id
-      JOIN products p ON p.id = oi.product_id
-      ORDER BY o.created_at DESC, p.name;
-
-  - name: "Customer order history"
-    description: "Get complete order history for a customer"
-    tables: [users, orders, order_items, products]
-    sql: |
-      SELECT
-        u.name,
-        u.email,
-        o.order_number,
-        o.created_at as order_date,
-        o.status,
-        o.total_amount,
-        p.name as product_name,
-        oi.quantity,
-        oi.unit_price
-      FROM users u
-      JOIN orders o ON o.customer_id = u.id
-      JOIN order_items oi ON oi.order_id = o.id
-      JOIN products p ON p.id = oi.product_id
-      WHERE u.id = '<user_uuid>'
-      ORDER BY o.created_at DESC;
-
-  - name: "Product sales performance"
-    description: "Get sales metrics for each product"
-    tables: [products, order_items, orders]
-    sql: |
-      SELECT
-        p.name,
-        p.category,
-        p.price as current_price,
-        COUNT(DISTINCT o.id) as order_count,
-        SUM(oi.quantity) as units_sold,
-        SUM(oi.quantity * oi.unit_price) as total_revenue,
-        AVG(oi.unit_price) as avg_selling_price
-      FROM products p
-      JOIN order_items oi ON oi.product_id = p.id
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status NOT IN ('cancelled', 'refunded')
-      GROUP BY p.id, p.name, p.category, p.price
-      ORDER BY total_revenue DESC;
-
-  - name: "Revenue by category"
-    description: "Aggregate revenue by product category"
-    tables: [products, order_items, orders]
-    sql: |
-      SELECT
-        p.category,
-        COUNT(DISTINCT o.id) as order_count,
-        SUM(oi.quantity) as units_sold,
-        SUM(oi.quantity * oi.unit_price) as total_revenue
-      FROM products p
-      JOIN order_items oi ON oi.product_id = p.id
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status NOT IN ('cancelled', 'refunded')
-      GROUP BY p.category
-      ORDER BY total_revenue DESC;
-
-# Entity relationship diagram structure
-entity_graph:
-  users:
-    type: central_entity
-    relationships_out:
-      - orders (1:N)
-    relationships_in: []
-
-  orders:
-    type: fact_table
-    relationships_out:
-      - order_items (1:N)
-    relationships_in:
-      - users (N:1, required)
-
-  order_items:
-    type: bridge_table
-    relationships_out: []
-    relationships_in:
-      - orders (N:1, required)
-      - products (N:1, required)
-
-  products:
-    type: dimension_table
-    relationships_out: []
-    relationships_in: []
-    notes: "Referenced by order_items"
-
-# Common aggregation patterns
-aggregation_patterns:
-  - name: "Revenue by customer"
-    description: "Total spend per customer"
-    sql: |
-      SELECT
-        u.id,
-        u.name,
-        u.email,
-        COUNT(DISTINCT o.id) as total_orders,
-        SUM(o.total_amount) as total_revenue,
-        AVG(o.total_amount) as avg_order_value
-      FROM users u
-      JOIN orders o ON o.customer_id = u.id
-      WHERE o.status NOT IN ('cancelled', 'refunded')
-      GROUP BY u.id, u.name, u.email
-      ORDER BY total_revenue DESC;
-
-  - name: "Daily revenue trend"
-    description: "Aggregate revenue by day"
-    sql: |
-      SELECT
-        DATE(created_at) as day,
-        COUNT(*) as order_count,
-        SUM(total_amount) as revenue,
-        AVG(total_amount) as avg_order_value
-      FROM orders
-      WHERE status NOT IN ('cancelled', 'refunded')
-      GROUP BY DATE(created_at)
-      ORDER BY day DESC;
-
-  - name: "Revenue by product category"
-    description: "Aggregate by category"
-    sql: |
-      SELECT
-        p.category,
-        COUNT(DISTINCT o.id) as orders,
-        SUM(oi.quantity) as units_sold,
-        SUM(oi.quantity * oi.unit_price) as revenue
-      FROM order_items oi
-      JOIN products p ON p.id = oi.product_id
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status NOT IN ('cancelled', 'refunded')
-      GROUP BY p.category
-      ORDER BY revenue DESC;
-
-  - name: "Customer cohort analysis"
-    description: "Group customers by signup month"
-    sql: |
-      SELECT
-        DATE_TRUNC('month', u.created_at) as cohort_month,
-        COUNT(DISTINCT u.id) as users,
-        COUNT(DISTINCT o.id) as orders,
-        SUM(o.total_amount) as revenue
-      FROM users u
-      LEFT JOIN orders o ON o.customer_id = u.id
-        AND o.status NOT IN ('cancelled', 'refunded')
-      GROUP BY DATE_TRUNC('month', u.created_at)
-      ORDER BY cohort_month DESC;
+pitfalls:
+  - "Sumar sale.total_centavos después de JOIN con sale_item lo multiplica por la cantidad de líneas: agregá la venta y las líneas por separado, o usá count(DISTINCT s.id)."
+  - "La deuda viene del ledger, no de sale: no la calcules como total de ventas pendientes."
+  - "client_ledger_entry tiene una fila 'sale' por venta: para métricas de venta usá sale/sale_item, no el ledger."

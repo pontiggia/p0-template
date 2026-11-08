@@ -1,0 +1,23 @@
+table: client
+description: Cliente de la gomería. NO tiene columnas de saldo — la deuda se calcula sumando client_ledger_entry.
+store_scoped: true   # WHERE client.store_id = 1
+primary_key: id
+columns:
+  - { name: id, type: bigint, description: "id interno" }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: local_id, type: integer, description: "NÚMERO DE CLIENTE visible; único por sucursal" }
+  - { name: name, type: text, description: "nombre / razón social (hay homónimos: identificá con local_id)" }
+  - { name: email, type: text, nullable: true }
+  - { name: phone, type: text, nullable: true }
+  - { name: dni, type: text, nullable: true, description: "texto libre, sin unicidad (hay valores de relleno)" }
+  - { name: address, type: text, nullable: true }
+  - { name: notes, type: text, nullable: true }
+  - { name: max_pending_sales, type: integer, nullable: true, description: "límite de ventas pendientes (NULL = el de la sucursal)" }
+  - { name: credit_exempt, type: boolean, description: "exento del límite de crédito" }
+  - { name: created_at, type: timestamptz }
+common_queries:
+  deuda_de_un_cliente: |
+    SELECT c.local_id, c.name, coalesce(sum(l.amount_centavos), 0) AS saldo_centavos
+    FROM client c LEFT JOIN client_ledger_entry l ON l.client_id = c.id AND l.store_id = 1
+    WHERE c.store_id = 1 AND c.local_id = :numero_cliente
+    GROUP BY c.id, c.local_id, c.name

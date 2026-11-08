@@ -1,0 +1,21 @@
+table: app_user
+description: Personal (vendedores, administradores). Rol por sucursal en store_membership.
+columns:
+  - { name: id, type: bigint }
+  - { name: name, type: text }
+  - { name: email, type: text, description: "es el valor que aparece en on_behalf_of cuando el agente actúa por esa persona" }
+  - { name: is_active, type: boolean }
+related_table:
+  table: store_membership
+  columns:
+    - { name: user_id, type: bigint, description: "→ app_user.id" }
+    - { name: store_id, type: bigint, description: "filtrar = 1" }
+    - { name: role, type: text, enum: [superadmin, admin, operator] }
+    - { name: can_view_money, type: boolean }
+common_queries:
+  ventas_por_vendedor_en_un_mes: |
+    SELECT u.name, count(*) AS ventas, sum(s.total_centavos) AS venta_bruta_centavos
+    FROM sale s JOIN app_user u ON u.id = s.sold_by_user_id
+    WHERE s.store_id = 1 AND s.status IN ('pending','paid')
+      AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03' AND s.sale_date < TIMESTAMPTZ '2026-11-01 00:00:00-03'
+    GROUP BY u.name ORDER BY venta_bruta_centavos DESC

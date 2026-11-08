@@ -86,9 +86,9 @@ cp .env.local.example .env.local
 
 Run the contents of `rpc-function.sql` in your Postgres database. This creates `execute_readonly_sql()` — the gateway through which all agent queries pass.
 
-### 4. Customize the semantic catalog
+### 4. The semantic catalog
 
-Replace the example files in `semantic-catalog/` with documentation for **your** database:
+`semantic-catalog/` documents **Pontimpo's** schema (from its `docs/SCHEMA.md`, `docs/METRICS_SPEC.md` and `src/db/schema/**`): store scoping (`store_id = 1` on every domain table), money as bigint centavos, the `pending`/`paid` inclusion rule, Buenos Aires day/week/month boundaries, and the exact metric formulas the app's `/api/v1/metrics/*` and `/debtors` compute:
 
 ```
 semantic-catalog/
@@ -96,17 +96,17 @@ semantic-catalog/
 ├── glossary.md                 # Business terms → SQL mappings
 ├── tables/
 │   └── *.yaml                  # One file per table: columns, types, common queries
-├── views/
-│   └── *.yaml                  # View definitions and use cases
+├── metrics/
+│   └── *.yaml                  # Exact metric formulas (venta bruta, ganancia neta/IVA, cobrado, deuda viva…)
 ├── relationships/
 │   └── joins.yaml              # How tables connect, join patterns
 ├── enums/
 │   └── enums.yaml              # Enum values and meanings
 └── functions/
-    └── functions-overview.yaml # Database functions
+    └── functions-overview.yaml # The SQL gateway's rules + date/format expressions
 ```
 
-Each YAML file includes column definitions, indexes, foreign keys, business rules, and ready-made query patterns. See the included e-commerce example for the expected format.
+Each YAML file includes column definitions, indexes, foreign keys, business rules, and ready-made query patterns. The live suite (`test/live/dev-data.live.test.ts`) asserts the WhatsApp answers against the app's own API figures.
 
 ### 5. Customize the system prompt
 

@@ -1,0 +1,16 @@
+table: stock_movement
+description: Movimientos de stock por producto. product.quantity_on_hand = Σ quantity_delta.
+store_scoped: true   # WHERE stock_movement.store_id = 1
+primary_key: id
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: product_id, type: bigint, description: "→ product.id" }
+  - { name: kind, type: text, enum: [sale, sale_reverted, purchase, adjustment, initial], description: "sale −, sale_reverted + (anulación/reembolso/cambio de producto), purchase + (compra), adjustment ± (ajuste manual), initial (stock migrado)" }
+  - { name: quantity_delta, type: integer, description: "firmado" }
+  - { name: sale_item_id, type: bigint, nullable: true, description: "→ sale_item.id" }
+  - { name: user_id, type: bigint, nullable: true }
+  - { name: notes, type: text, nullable: true }
+  - { name: created_at, type: timestamptz }
+notes:
+  - "Las ventas migradas del sistema viejo NO tienen stock_movement 'sale' (el stock se migró como 'initial'): para unidades vendidas usá sale_item, no esta tabla."

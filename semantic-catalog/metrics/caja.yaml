@@ -1,0 +1,23 @@
+metric: caja
+label_es: Caja — saldo total y por método, egresos, ingresos
+source: DOMAIN_SPEC.md §1 (cash movements) — la página Caja de la app
+clock: cash_movement.created_at (única fecha de la tabla)
+inclusion: "store_id = 1"
+unit: "centavos ARS (firmado: + entra a la caja, − sale)"
+definition: |
+  saldo de caja = Σ amount_centavos (por method para el saldo por medio de pago). Es un registro de
+  movimientos físicos, no una autoridad contable. Solo los pagos recibidos e ingresos llenan la caja:
+  una venta pendiente no toca la caja.
+kinds:
+  payment_received: "+ automático por cada pago de cliente (ledger_entry_id → el pago)"
+  expense: "− egreso manual (gastos)"
+  income: "+ ingreso manual"
+  refund: "− plata devuelta a un cliente"
+  adjustment: "± correcciones (incluye reversiones de pago y los saldos iniciales por método de la migración)"
+  opening_count: "reservado"
+sql: |
+  SELECT m.method, sum(m.amount_centavos) AS saldo_centavos
+  FROM cash_movement m
+  WHERE m.store_id = 1
+  GROUP BY m.method
+  ORDER BY m.method

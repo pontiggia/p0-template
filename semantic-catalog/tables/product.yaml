@@ -1,0 +1,22 @@
+table: product
+description: Catálogo de productos (neumáticos, cámaras, repuestos). Los servicios están en la tabla service.
+store_scoped: true   # WHERE product.store_id = 1
+primary_key: id
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: code, type: text, description: "CÓDIGO del producto (texto, único por sucursal) — el que dice el personal" }
+  - { name: name, type: text, description: "nombre genérico (ej. 'NEUMATICO AUTO CAMIONETA', 'CAMARA MOTO')" }
+  - { name: details, type: text, nullable: true, description: "medida, marca, modelo, índice (ej. '175/70 13 FORTUNE FSR802')" }
+  - { name: is_tire, type: boolean, description: "true = neumático/cubierta" }
+  - { name: location, type: text, nullable: true }
+  - { name: price_centavos, type: bigint, unit: centavos ARS, description: "precio de lista ACTUAL" }
+  - { name: cost_centavos, type: bigint, unit: centavos ARS, description: "costo ACTUAL (para ganancias históricas usar sale_item.unit_cost_centavos)" }
+  - { name: quantity_on_hand, type: integer, description: "STOCK actual (= Σ stock_movement.quantity_delta)" }
+  - { name: is_active, type: boolean }
+  - { name: created_at, type: timestamptz }
+  - { name: updated_at, type: timestamptz }
+common_queries:
+  stock_de_una_medida: |
+    SELECT code, name, details, quantity_on_hand, price_centavos FROM product
+    WHERE store_id = 1 AND is_active AND details ILIKE '%175/70 13%' ORDER BY details

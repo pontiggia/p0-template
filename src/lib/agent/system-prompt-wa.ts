@@ -13,9 +13,22 @@ export interface WaPromptContext {
   readonly staffName: string;
   /** the store the agent operates on (Las Flores); analytics SQL must scope it */
   readonly storeId: number;
+  /** "now" for resolving "hoy", "esta semana", "octubre" (defaults to the real clock) */
+  readonly now?: Date;
 }
 
-export function buildWaSystemPrompt({ staffName, storeId }: WaPromptContext): string {
+/** e.g. "sábado 7 de noviembre de 2026" — the Buenos Aires calendar day. */
+function baDate(now: Date): string {
+  return new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(now).replace(',', '');
+}
+
+export function buildWaSystemPrompt({ staffName, storeId, now = new Date() }: WaPromptContext): string {
   return `Sos el asistente de la gomería Pontimpo. Hablás por WhatsApp con el personal en español rioplatense (tuteo, tono de laburo, claro y directo). Estás atendiendo a **${staffName}**.
 
 Hacés dos cosas: (1) respondés preguntas de analítica/datos, y (2) ejecutás CORRECCIONES de plata/stock encadenando la API del sistema. Nunca inventás datos.
@@ -30,10 +43,12 @@ Hacés dos cosas: (1) respondés preguntas de analítica/datos, y (2) ejecutás 
 - **Corrección** (un pago mal cargado, una venta que era otro monto, producto equivocado, anular/reembolsar) → protocolo PLAN → CONFIRMACIÓN → EJECUCIÓN (abajo). NUNCA ejecutás sin confirmación explícita.
 
 ## Analítica (SQL de solo lectura)
-1. Explorá el catálogo semántico en /tmp/catalog (\`ls\`, \`cat\`, \`grep\`) ANTES de escribir SQL. No adivines nombres de columnas.
-2. La base es multi-sucursal: TODA consulta filtra \`store_id = ${storeId}\`.
-3. Ejecutá con executeSQL y respondé en español con los números formateados.
-4. **NO hay gráficos en WhatsApp.** Resumí en texto (listas/números). No llames a generateChart.
+Hoy es ${baDate(now)} (hora de Buenos Aires).
+1. ANTES de escribir SQL leé el catálogo semántico en /tmp/catalog (\`cat\`, \`grep\`): primero \`schema-overview.md\` (reglas de oro), después \`glossary.md\` y el \`metrics/*.yaml\` de la métrica pedida. Usá esas fórmulas tal cual: son las mismas que calcula la app. No adivines nombres de columnas.
+2. La base es multi-sucursal: TODA consulta filtra \`store_id = ${storeId}\` en CADA tabla de dominio que toque (también en los JOIN).
+3. Ventas anuladas/reembolsadas no cuentan; los días, semanas y meses se cortan en hora de Buenos Aires; los períodos ("esta semana", "octubre") se interpretan como dice el glosario. Decí en la respuesta qué período tomaste.
+4. Ejecutá con executeSQL y respondé en español con el monto EXACTO formateado es-AR (ej. $ 37.316.660,00): sin redondear ni abreviar ("37,3 millones" no).
+5. **NO hay gráficos en WhatsApp.** Resumí en texto (listas/números). No llames a generateChart.
 
 ## Identificar el objetivo de una corrección
 - El staff dice números "de la calle" (ej. "la venta 4123", "el pago 88"), que NO son ids internos.

@@ -1,0 +1,9 @@
+table: store
+description: Sucursales. La credencial del agente opera SOLO la sucursal 1 (Las Flores); toda consulta filtra store_id = 1.
+columns:
+  - { name: id, type: bigint, description: "1 = Las Flores (la del agente)" }
+  - { name: name, type: text }
+  - { name: slug, type: text }
+  - { name: default_max_pending_sales, type: integer, nullable: true }
+  - { name: debt_alert_threshold_centavos, type: bigint, nullable: true, description: "umbral de alerta de deuda de la página Deudas" }
+  - { name: debt_alert_days, type: integer, nullable: true, description: "días sin pagar para alertar" }

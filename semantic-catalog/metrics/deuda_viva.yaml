@@ -1,0 +1,31 @@
+metric: deuda_viva
+label_es: Deuda viva (deuda total, "cuánto nos deben"), deudores, saldo a favor, top deudores
+source: METRICS_SPEC.md §3 — idéntico a GET /api/v1/debtors → summary.{total_debt_centavos,debtor_count,total_credit_centavos} y data[] (orden deuda desc)
+clock: "todas las entradas del ledger hasta la fecha de corte (para hoy: todas)"
+inclusion: "store_id = 1 — TODAS las kinds del ledger (sale, payment, discount, tax_withholding, opening_balance, adjustment, cancellation, refund)"
+unit: centavos ARS
+definition: |
+  saldo de cada cliente = Σ amount_centavos de TODAS sus entradas (positivo = debe, negativo = a favor).
+  deuda viva = Σ de los saldos POSITIVOS (los saldos a favor NO se restan).
+  deudores = cantidad de clientes con saldo > 0. saldo a favor total = Σ de los saldos negativos.
+sql_resumen: |
+  SELECT coalesce(sum(saldo) FILTER (WHERE saldo > 0), 0) AS deuda_viva_centavos,
+         count(*) FILTER (WHERE saldo > 0)                AS deudores,
+         coalesce(sum(saldo) FILTER (WHERE saldo < 0), 0) AS saldo_a_favor_centavos
+  FROM (SELECT l.client_id, sum(l.amount_centavos) AS saldo
+        FROM client_ledger_entry l
+        WHERE l.store_id = 1
+        GROUP BY l.client_id) t
+sql_top_deudores: |
+  SELECT c.local_id AS numero_cliente, c.name AS cliente, sum(l.amount_centavos) AS deuda_centavos,
+         max(l.entry_date) FILTER (WHERE l.kind = 'payment') AS ultimo_pago
+  FROM client_ledger_entry l
+  JOIN client c ON c.id = l.client_id AND c.store_id = 1
+  WHERE l.store_id = 1
+  GROUP BY c.id, c.local_id, c.name
+  HAVING sum(l.amount_centavos) > 0
+  ORDER BY deuda_centavos DESC, c.id
+  LIMIT 5
+notes:
+  - "Deuda viva a una fecha pasada: agregá l.entry_date < TIMESTAMPTZ '<día siguiente> 00:00:00-03' dentro de la subconsulta."
+  - "Nunca calcules la deuda desde sale.status: un cliente puede deber por deuda inicial (opening_balance) sin ventas pendientes."

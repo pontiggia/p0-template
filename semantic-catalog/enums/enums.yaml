@@ -1,114 +1,58 @@
-enum_types:
-  note: "Postgres database does not define custom ENUM types in the public schema. Enumerations are enforced through check constraints, default values, or application logic."
+# Valores permitidos (CHECK constraints en la base). Todos en texto.
 
-# Implicit enumerations (enforced by check constraints, defaults, or application logic)
+sale_status:            # sale.status
+  pending:   "pendiente — el cliente todavía debe algo de esta venta. INCLUIDA en métricas"
+  paid:      "pagada — deuda 0. INCLUIDA en métricas"
+  cancelled: "anulada (R5, solo si no tenía pagos). EXCLUIDA de toda métrica"
+  refunded:  "reembolsada (R6). EXCLUIDA de toda métrica"
 
-implicit_enums:
-  order_status:
-    table: orders
-    column: status
-    type: character varying
-    values:
-      - value: pending
-        description: "Order placed, awaiting processing"
-      - value: confirmed
-        description: "Order confirmed and being prepared"
-      - value: shipped
-        description: "Order shipped, in transit to customer"
-      - value: delivered
-        description: "Order successfully delivered"
-      - value: cancelled
-        description: "Order cancelled - EXCLUDE from revenue calculations"
-      - value: refunded
-        description: "Order refunded - EXCLUDE from revenue calculations"
-    notes:
-      - "Default value is 'pending'"
-      - "Status transitions: pending → confirmed → shipped → delivered"
-      - "Cancelled and refunded are terminal states"
-      - "Always exclude 'cancelled' and 'refunded' from revenue calculations"
+sale_item_kind:         # sale_item.kind
+  product: "producto del catálogo (product_id); tiene costo y stock"
+  service: "servicio / mano de obra (service_id); margen puro, sin stock, sin Ganancia IVA"
 
-  payment_methods:
-    table: orders
-    column: payment_method
-    type: character varying
-    values:
-      - value: credit_card
-        description: "Credit card payment"
-      - value: debit_card
-        description: "Debit card payment"
-      - value: paypal
-        description: "PayPal payment"
-      - value: bank_transfer
-        description: "Direct bank transfer"
-    notes:
-      - "Can be null if payment method not yet selected"
-      - "Not enforced by CHECK constraint"
+ledger_kind:            # client_ledger_entry.kind — signo y significado
+  sale:            { sign: "+", meaning: "venta cargada a la cuenta del cliente (+total)" }
+  payment:         { sign: "−", meaning: "plata recibida (tiene payment_method). Base del 'cobrado'" }
+  discount:        { sign: "−", meaning: "bonificación (no se movió plata)" }
+  tax_withholding: { sign: "−", meaning: "retención impositiva (no se movió plata)" }
+  opening_balance: { sign: "±", meaning: "deuda (+) o crédito (−) inicial pre-sistema / migración" }
+  adjustment:      { sign: "±", meaning: "corrección: diferencia de precio R7/R12, o reversión de un pago R11 (+monto, reverses_entry_id)" }
+  cancellation:    { sign: "−", meaning: "anula la entrada 'sale' de una venta anulada o reembolsada" }
+  refund:          { sign: "+", meaning: "plata devuelta al cliente en un reembolso (R6)" }
 
-  product_categories:
-    table: products
-    column: category
-    type: character varying
-    common_values:
-      - Electronics
-      - Clothing
-      - Home & Garden
-      - Books
-      - Sports
-      - Food & Beverage
-      - Health & Beauty
-      - Toys
-    notes:
-      - "Not a closed enumeration, new categories can be added"
-      - "Can be null"
-      - "Use ILIKE for case-insensitive matching"
+payment_method:         # client_ledger_entry.payment_method y cash_movement.method
+  efectivo:      "efectivo / cash"
+  credito:       "tarjeta de crédito"
+  debito:        "tarjeta de débito"
+  transferencia: "transferencia bancaria"
+  cheque:        "cheque"
+  "cta cte":     "SOLO HISTÓRICO (datos migrados); hoy 'a cuenta' = venta pending"
 
-  countries:
-    table: users
-    column: country
-    type: character varying
-    common_values:
-      - value: United States
-        description: "Primary market"
-      - value: Canada
-        description: "North American market"
-      - value: United Kingdom
-        description: "European market"
-      - value: Germany
-        description: "European market"
-      - value: Australia
-        description: "APAC market"
-    notes:
-      - "Not a closed enumeration, any country value accepted"
-      - "Can be null"
+currency:               # client_ledger_entry.currency, cash_movement.currency
+  ARS: "pesos (default)"
+  USD: "pago hecho en dólares: amount_centavos sigue en pesos; amount_usd_centavos y fx_rate_centavos guardan el detalle"
 
-  product_stock_status:
-    table: products
-    column: in_stock
-    type: boolean
-    values:
-      - value: true
-        description: "Product is available for purchase"
-      - value: false
-        description: "Product is out of stock"
-    notes:
-      - "Default value is true"
-      - "Boolean type, not enum"
+cash_kind:              # cash_movement.kind
+  payment_received: "+ cobro de cliente (automático)"
+  expense:          "− egreso / gasto manual"
+  income:           "+ ingreso manual"
+  refund:           "− devolución de plata a un cliente"
+  adjustment:       "± correcciones y saldos iniciales por método (migración)"
+  opening_count:    "reservado"
 
-validation_queries:
-  find_invalid_order_status:
-    sql: |
-      SELECT DISTINCT status FROM orders
-      WHERE status NOT IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded');
+stock_kind:             # stock_movement.kind
+  sale:          "− salida por venta"
+  sale_reverted: "+ vuelve al stock (anulación, reembolso con reposición, cambio de producto)"
+  purchase:      "+ compra / ingreso de mercadería"
+  adjustment:    "± ajuste manual"
+  initial:       "stock inicial migrado"
 
-  find_orders_without_items:
-    sql: |
-      SELECT o.id, o.order_number, o.total_amount
-      FROM orders o
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      WHERE oi.id IS NULL;
+actor_type:             # audit_event.actor_type
+  user:   "una persona desde la app"
+  agent:  "el agente (credencial de API); on_behalf_of = la persona"
+  system: "procesos automáticos / migración"
 
-  find_products_without_category:
-    sql: |
-      SELECT id, name, sku
-      FROM products
-      WHERE category IS NULL;
+role:                   # store_membership.role
+  superadmin: "dueño"
+  admin:      "administrador"
+  operator:   "operador (no ve montos si can_view_money = false)"

@@ -1,0 +1,25 @@
+metric: top_productos
+label_es: Top productos / más vendidos
+source: METRICS_SPEC.md §2 — GET /api/v1/metrics/summary → topProducts (15 filas)
+clock: sale.sale_date
+inclusion: "store_id = 1 AND sale.status IN ('pending','paid') AND sale_item.kind = 'product'"
+definition: por producto — unidades (Σ quantity), ventas distintas, última venta, stock actual; orden unidades desc, nombre
+sql: |
+  SELECT p.code, p.name, p.details,
+         sum(i.quantity)              AS unidades,
+         count(DISTINCT s.id)         AS ventas,
+         max(s.sale_date)             AS ultima_venta,
+         p.quantity_on_hand           AS stock_actual
+  FROM sale_item i
+  JOIN sale s    ON s.id = i.sale_id AND s.store_id = 1
+  JOIN product p ON p.id = i.product_id AND p.store_id = 1
+  WHERE i.store_id = 1
+    AND i.kind = 'product'
+    AND s.status IN ('pending', 'paid')
+    AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+    AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'
+  GROUP BY p.id, p.code, p.name, p.details, p.quantity_on_hand
+  ORDER BY unidades DESC, p.name
+  LIMIT 15
+notes:
+  - "p.name suele ser genérico ('NEUMATICO AUTO CAMIONETA'); la medida y la marca están en p.details — mostrá ambos."

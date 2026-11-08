@@ -1,0 +1,22 @@
+metric: unidades
+label_es: Productos vendidos, Neumáticos vendidos, % precio modificado
+source: METRICS_SPEC.md §2 — GET /api/v1/metrics/summary → metrics.quantities.{unitsSold,tiresSold,salesCount}, metrics.sales.{productLines,modifiedPriceLines}
+clock: sale.sale_date
+inclusion: "store_id = 1 AND sale.status IN ('pending','paid')"
+definition: |
+  productos_vendidos  = Σ quantity de líneas kind = 'product' (los servicios no son unidades)
+  neumaticos_vendidos = lo mismo, solo product.is_tire = true
+  precio_modificado   = líneas de producto con unit_price_centavos <> list_price_centavos ÷ líneas de producto
+sql: |
+  SELECT coalesce(sum(i.quantity) FILTER (WHERE i.kind = 'product'), 0)                 AS productos_vendidos,
+         coalesce(sum(i.quantity) FILTER (WHERE i.kind = 'product' AND p.is_tire), 0)   AS neumaticos_vendidos,
+         count(*) FILTER (WHERE i.kind = 'product')                                     AS lineas_producto,
+         count(*) FILTER (WHERE i.kind = 'product'
+                          AND i.unit_price_centavos <> i.list_price_centavos)          AS lineas_precio_modificado
+  FROM sale_item i
+  JOIN sale s ON s.id = i.sale_id AND s.store_id = 1
+  LEFT JOIN product p ON p.id = i.product_id AND p.store_id = 1
+  WHERE i.store_id = 1
+    AND s.status IN ('pending', 'paid')
+    AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+    AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'

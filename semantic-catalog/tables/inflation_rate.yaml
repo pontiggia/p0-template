@@ -1,0 +1,6 @@
+table: inflation_rate
+description: IPC mensual de Argentina (informativo). GLOBAL — no tiene store_id.
+columns:
+  - { name: period, type: text, description: "'AAAA-MM'" }
+  - { name: cpi_monthly_pct, type: numeric, description: "inflación mensual en %" }
+  - { name: source, type: text }

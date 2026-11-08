@@ -1,146 +1,97 @@
-# Business Glossary
+# Glosario — términos del negocio → SQL
 
-## Key Business Concepts
+Siempre: `store_id = 1` en cada tabla de dominio, montos en centavos (÷100 para mostrar),
+cortes de día/semana/mes en hora de Buenos Aires. Fórmulas completas en `metrics/`.
 
-### "Active Users"
+## Períodos (hora de Buenos Aires)
 
-Users who placed at least one order in the last 30 days.
+Usá `now()` para "hoy" — la base sabe la fecha. `BA` = `'America/Argentina/Buenos_Aires'`.
 
-**SQL:**
-```sql
-WHERE id IN (
-  SELECT customer_id FROM orders
-  WHERE created_at > NOW() - INTERVAL '30 days'
-    AND status NOT IN ('cancelled', 'refunded')
-)
-```
+| Lo que dicen | Rango inclusivo | Límite SQL (`col >= desde AND col < hasta_exclusivo`) |
+|---|---|---|
+| hoy | hoy | `date_trunc('day', now() AT TIME ZONE BA) AT TIME ZONE BA` … `+ interval '1 day'` |
+| ayer | ayer | día de hoy − 1 |
+| esta semana | **lunes de esta semana → hoy** | `date_trunc('week', now() AT TIME ZONE BA) AT TIME ZONE BA` … inicio de mañana |
+| la semana pasada | lunes → domingo de la semana anterior | `date_trunc('week', …) - interval '7 days'` … `date_trunc('week', …)` |
+| este mes | día 1 del mes → hoy | `date_trunc('month', now() AT TIME ZONE BA) AT TIME ZONE BA` … inicio de mañana |
+| el mes pasado | mes calendario anterior completo | `date_trunc('month', …) - interval '1 month'` … `date_trunc('month', …)` |
+| "en octubre" (sin año) | el octubre más reciente que ya empezó (en noviembre de 2026 → octubre de 2026), mes completo | `TIMESTAMPTZ '2026-10-01 00:00:00-03'` … `TIMESTAMPTZ '2026-11-01 00:00:00-03'` |
+| este año | 1 de enero → hoy | `date_trunc('year', …)` … inicio de mañana |
 
----
+`X AT TIME ZONE BA` sobre un `timestamptz` da la hora local (timestamp sin zona); aplicado de nuevo
+sobre ese timestamp local lo vuelve a `timestamptz`. Literal equivalente: `TIMESTAMPTZ 'AAAA-MM-DD 00:00:00-03'`.
+Nunca cortes por `date(col)` en UTC: una venta de las 22 h de BA cae en el día siguiente UTC.
 
-### "Revenue"
+## Ventas (reloj: `sale.sale_date`; solo `status IN ('pending','paid')`)
 
-Sum of total_amount from non-cancelled orders. Always in USD.
+| Término | SQL |
+|---|---|
+| **Venta bruta / Ventas brutas / "cuánto vendimos" / facturación** | `SUM(sale.total_centavos)` de ventas incluidas en el rango |
+| **Cantidad de ventas** | `COUNT(*)` de ventas incluidas (`COUNT(DISTINCT sale.id)` si hay JOIN con `sale_item`) |
+| **Ticket promedio** | venta bruta ÷ cantidad de ventas, redondeado a centavo entero |
+| **Ganancia neta** (también "ganancia bruta", "margen", "cuánto ganamos") | líneas de producto con costo: `SUM((unit_price_centavos − unit_cost_centavos) × quantity)` **+** líneas de servicio: `SUM(sale_item.total_centavos)` (los servicios son margen puro). Líneas de producto con `unit_cost_centavos IS NULL` se excluyen (12 filas históricas) → ver `metrics/ganancia_neta.yaml` |
+| **Ganancia IVA** ("lo que nos ganamos de IVA", "IVA win") | `ROUND(SUM(unit_cost_centavos × quantity) × 0.17)` sobre líneas de **producto** de ventas **no facturadas** (`sale.is_invoiced = false`); nunca servicios → `metrics/ganancia_iva.yaml` |
+| **Productos vendidos** (unidades) | `SUM(sale_item.quantity)` solo líneas `kind = 'product'` |
+| **Neumáticos / cubiertas vendidas** | igual, solo productos con `product.is_tire = true` |
+| **% precio modificado** | líneas de producto con `unit_price_centavos <> list_price_centavos` ÷ líneas de producto |
+| **Top productos / más vendidos** | por producto: `SUM(quantity)`, ventas distintas, última venta, stock actual → `metrics/top_productos.yaml` |
+| **Venta facturada / con factura** | `sale.is_invoiced = true` ("en blanco"); `false` = sin factura ("en negro") |
+| **Vendedor** | `sale.sold_by_user_id → app_user.name` |
 
-**SQL:**
-```sql
-SUM(total_amount) WHERE status NOT IN ('cancelled', 'refunded')
-```
+## Cobranza (reloj: `client_ledger_entry.entry_date`)
 
----
+| Término | SQL |
+|---|---|
+| **Cobrado / cobranza / "cuánto entró" / "cuánto se cobró"** | `−SUM(amount_centavos)` de entradas `kind = 'payment'` en el rango (da positivo) |
+| **Cobrado en efectivo / con cheque / por transferencia / con débito / con crédito (tarjeta)** | lo mismo con `payment_method = 'efectivo' / 'cheque' / 'transferencia' / 'debito' / 'credito'` |
+| **Cobrado en dólares** | pagos con `currency = 'USD'`: `amount_centavos` es el equivalente en pesos; `SUM(amount_usd_centavos)` da los US$ (centavos de dólar) |
+| **Devuelto / reembolsos** | `SUM(amount_centavos)` de `kind = 'refund'` en el rango |
+| **Descuentos / bonificaciones** | `−SUM(amount_centavos)` de `kind = 'discount'` |
+| **Retenciones** | `−SUM(amount_centavos)` de `kind = 'tax_withholding'` |
 
-### "Churn Rate"
+El cobrado NO se mezcla con la venta bruta: una venta de octubre cobrada en noviembre suma a la
+venta bruta de octubre y al cobrado de noviembre.
 
-Users active last month but not this month.
+## Deuda (reloj: todas las entradas del ledger hasta la fecha de corte)
 
-**SQL:**
-```sql
--- Users who ordered last month but not this month
-SELECT COUNT(DISTINCT last_month.customer_id)::numeric / COUNT(DISTINCT last_month.customer_id)
-FROM (
-  SELECT DISTINCT customer_id FROM orders
-  WHERE created_at BETWEEN DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
-    AND DATE_TRUNC('month', CURRENT_DATE)
-    AND status NOT IN ('cancelled', 'refunded')
-) last_month
-LEFT JOIN (
-  SELECT DISTINCT customer_id FROM orders
-  WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)
-    AND status NOT IN ('cancelled', 'refunded')
-) this_month ON this_month.customer_id = last_month.customer_id
-WHERE this_month.customer_id IS NULL;
-```
+| Término | SQL |
+|---|---|
+| **Deuda de un cliente / saldo** | `SUM(client_ledger_entry.amount_centavos)` del cliente (positivo = debe) |
+| **Saldo a favor (crédito del cliente)** | saldo negativo; se muestra en positivo como "a favor" |
+| **Deuda viva / deuda total / "cuánto nos deben"** | suma de los saldos **positivos** por cliente (no restar los saldos a favor) → `metrics/deuda_viva.yaml` |
+| **Saldo a favor de clientes (total)** | suma de los saldos negativos por cliente |
+| **Deudores** | clientes con saldo > 0; "los que más deben" = ordenar por saldo desc, desempate `client.id` |
+| **Último pago de un cliente** | `MAX(entry_date)` de sus entradas `kind = 'payment'` |
+| **Ventas pendientes de un cliente** | `sale.status = 'pending'` del cliente |
+| **Deuda de una venta** | `total − pagado`; para una venta puntual preferí `getSale` (la API ya calcula `debt_centavos`) |
 
----
+## Caja (`cash_movement`)
 
-## Business Terms and SQL Equivalents
+| Término | SQL |
+|---|---|
+| **Saldo de caja (total o por método)** | `SUM(cash_movement.amount_centavos)` (por `method`); es un registro, no una autoridad |
+| **Egresos / gastos** | `kind = 'expense'` (montos negativos) |
+| **Ingresos manuales** | `kind = 'income'` |
 
-### User Terms
+## Clientes, productos, stock
 
-| Business Term | SQL Equivalent | Description |
-|---------------|----------------|-------------|
-| **Customer** | `users` table | A registered user who can place orders |
-| **Name** | `users.name` | Full name of the customer |
-| **Email** | `users.email` | Email address (unique per user) |
-| **Signup Date** | `users.created_at` | When the user registered |
-| **Country** | `users.country` | User's country |
+| Término | SQL |
+|---|---|
+| **Número de cliente / de venta** | `client.local_id` / `sale.local_id` (lo que dice el personal; **no** es el `id` interno) |
+| **Stock de un producto** | `product.quantity_on_hand` |
+| **Código de producto** | `product.code` (texto, único por sucursal); medida/marca en `product.details` |
+| **Neumático / cubierta** | `product.is_tire = true` |
+| **Servicio (gomería, mano de obra)** | tabla `service`; en ventas, `sale_item.kind = 'service'` |
 
-### Order Terms
+## Dólar e inflación
 
-| Business Term | SQL Equivalent | Description |
-|---------------|----------------|-------------|
-| **Order** | `orders` table | A customer purchase with one or more items |
-| **Order Total** | `orders.total_amount` | Total order value in USD |
-| **Order Status** | `orders.status` | Current order state |
-| **Order Date** | `orders.created_at` | When the order was placed |
-| **Shipping Address** | `orders.shipping_address` | Delivery address |
+| Término | SQL |
+|---|---|
+| **Dólar blue / cotización** | `exchange_rate` con `type = 'blue'`; `sell_centavos` = pesos-centavos por US$ 1 (venta) |
+| **≈ US$ de una métrica** | métrica ÷ promedio de `sell_centavos` blue de los días del período con dato |
+| **Inflación / IPC** | `inflation_rate.cpi_monthly_pct` por `period` ('AAAA-MM'); solo informativo |
 
-### Product Terms
+## Formato de respuesta
 
-| Business Term | SQL Equivalent | Description |
-|---------------|----------------|-------------|
-| **Product** | `products` table | An item available for purchase |
-| **SKU** | `products.sku` | Unique product identifier |
-| **Product Price** | `products.price` | Current list price in USD |
-| **Category** | `products.category` | Product category (Electronics, Clothing, etc.) |
-| **In Stock** | `products.in_stock` | Whether product is available |
-
-### Revenue & Metrics Terms
-
-| Business Term | SQL Equivalent | Description |
-|---------------|----------------|-------------|
-| **Revenue** | `SUM(orders.total_amount)` | Total sales excluding cancelled/refunded |
-| **AOV** | `AVG(orders.total_amount)` | Average Order Value |
-| **Units Sold** | `SUM(order_items.quantity)` | Total product units sold |
-| **Conversion Rate** | Orders / Visits | Percentage of visits resulting in orders |
-| **Customer Lifetime Value** | `SUM(total_amount) per customer` | Total spend per customer |
-| **Repeat Rate** | Users with >1 order / Total users | Percentage of repeat customers |
-
----
-
-## Common Value Enumerations
-
-### Order Status (orders.status)
-- `pending` - Order placed, awaiting processing
-- `confirmed` - Order confirmed and being prepared
-- `shipped` - Order shipped, in transit
-- `delivered` - Order delivered to customer
-- `cancelled` - Order cancelled (EXCLUDE from revenue)
-- `refunded` - Order refunded (EXCLUDE from revenue)
-
-### Product Categories (products.category)
-- `Electronics`
-- `Clothing`
-- `Home & Garden`
-- `Books`
-- `Sports`
-- `Food & Beverage`
-- `Health & Beauty`
-- `Toys`
-
----
-
-## Query Patterns
-
-### Aggregation Functions
-- `COUNT(*)` - Count rows
-- `SUM(column)` - Sum values
-- `AVG(column)` - Average value
-- `MIN(column)` - Minimum value
-- `MAX(column)` - Maximum value
-
-### Window Functions
-- `ROW_NUMBER()` - Assign sequential number
-- `RANK()` - Rank with gaps
-- `LAG()` - Previous row value
-- `SUM() OVER()` - Running total
-
-### Date Functions
-- `NOW()` - Current timestamp
-- `CURRENT_DATE` - Current date
-- `DATE_TRUNC('day', timestamp)` - Round to day
-- `INTERVAL '1 day'` - Time interval
-
-### String Functions
-- `ILIKE` - Case-insensitive pattern match
-- `LOWER()` - Convert to lowercase
-- `TRIM()` - Remove whitespace
+Montos es-AR: `$ 37.316.660,00` (punto de miles, coma decimal, siempre 2 decimales). Para convertir
+centavos → texto en SQL usá la expresión `formato_ars` de `functions/functions-overview.yaml`.

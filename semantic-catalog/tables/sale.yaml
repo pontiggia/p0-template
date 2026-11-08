@@ -1,0 +1,27 @@
+table: sale
+description: Cabecera de venta. Una venta tiene 1..n líneas (sale_item). Su total queda en la cuenta corriente del cliente como una entrada kind='sale' (+total).
+store_scoped: true   # SIEMPRE WHERE sale.store_id = 1
+primary_key: id
+columns:
+  - { name: id, type: bigint, description: "id interno (NO es el número de venta que dice el personal)" }
+  - { name: store_id, type: bigint, description: "sucursal; filtrar = 1" }
+  - { name: local_id, type: integer, description: "NÚMERO DE VENTA visible (ej. 'la venta 4123'); único por sucursal" }
+  - { name: client_id, type: bigint, description: "→ client.id" }
+  - { name: sold_by_user_id, type: bigint, description: "→ app_user.id (vendedor)" }
+  - { name: sale_date, type: timestamptz, description: "FECHA DE NEGOCIO de la venta (editable). Reloj de todas las métricas de venta. Cortar en hora BA" }
+  - { name: status, type: text, enum: [pending, paid, cancelled, refunded], description: "pending = debe algo; paid = saldada; cancelled = anulada (sin pagos); refunded = reembolsada. Métricas: solo pending y paid" }
+  - { name: is_invoiced, type: boolean, description: "true = facturada ('con factura', 'en blanco'); false = sin factura → participa de la Ganancia IVA" }
+  - { name: total_centavos, type: bigint, unit: centavos ARS, description: "total de la venta = Σ sale_item.total_centavos (ya refleja correcciones R7/R12)" }
+  - { name: notes, type: text }
+  - { name: meta, type: jsonb, description: "campos legados del sistema viejo (type, paymentDetails); no usar para métricas" }
+  - { name: created_at, type: timestamptz, description: "cuándo se cargó la fila (NO usar para métricas: usar sale_date)" }
+  - { name: updated_at, type: timestamptz }
+indexes: ["(store_id, local_id) UNIQUE", "(store_id, sale_date)", "(client_id, sale_date)", "(store_id, client_id) WHERE status = 'pending'"]
+common_queries:
+  ventas_incluidas_de_un_mes: |
+    SELECT count(*), sum(total_centavos) FROM sale
+    WHERE store_id = 1 AND status IN ('pending','paid')
+      AND sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03' AND sale_date < TIMESTAMPTZ '2026-11-01 00:00:00-03'
+  ventas_pendientes_de_un_cliente: |
+    SELECT local_id, sale_date, total_centavos FROM sale
+    WHERE store_id = 1 AND status = 'pending' AND client_id = :client_id ORDER BY sale_date DESC

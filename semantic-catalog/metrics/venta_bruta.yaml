@@ -1,0 +1,25 @@
+metric: venta_bruta
+label_es: Ventas brutas (venta bruta, "cuánto vendimos", facturación)
+source: METRICS_SPEC.md §2 — idéntico a GET /api/v1/metrics/summary → metrics.sales.grossCentavos
+clock: sale.sale_date (fecha de negocio)
+inclusion: "store_id = 1 AND status IN ('pending','paid') — anuladas y reembolsadas NUNCA cuentan"
+unit: centavos ARS (BIGINT) — dividí por 100 para mostrar
+definition: SUM(sale.total_centavos) de las ventas incluidas en el rango
+also:
+  cantidad_ventas: COUNT(*) de las mismas ventas
+  ticket_promedio: ROUND(venta_bruta / cantidad_ventas) (0 si no hay ventas)
+sql: |
+  -- Rango inclusivo [desde, hasta] en hora de Buenos Aires → límites UTC−3.
+  SELECT coalesce(sum(s.total_centavos), 0)                       AS venta_bruta_centavos,
+         count(*)                                                  AS cantidad_ventas,
+         CASE WHEN count(*) = 0 THEN 0
+              ELSE round(sum(s.total_centavos)::numeric / count(*)) END AS ticket_promedio_centavos
+  FROM sale s
+  WHERE s.store_id = 1
+    AND s.status IN ('pending', 'paid')
+    AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+    AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'
+notes:
+  - "Una venta corregida (R7) ya tiene su total nuevo en sale.total_centavos: no sumes los adjustment del ledger."
+  - "Por día (serie): GROUP BY to_char(s.sale_date AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD')."
+  - "Por mes: date_trunc('month', s.sale_date AT TIME ZONE 'America/Argentina/Buenos_Aires')."

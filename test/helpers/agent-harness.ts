@@ -16,10 +16,13 @@ export const harness = {
   model: null as LanguageModel | null,
   modelCalls: 0,
   toolCalls: [] as string[],
+  /** the input each tool call received, in call order (e.g. the SQL executeSQL ran) */
+  toolInputs: [] as { name: string; input: unknown }[],
   reset() {
     this.model = null;
     this.modelCalls = 0;
     this.toolCalls.length = 0;
+    this.toolInputs.length = 0;
   },
 };
 
@@ -32,6 +35,7 @@ function spy<T extends AnyTools>(tools: T): T {
         ...t,
         execute: async (...args: never[]) => {
           harness.toolCalls.push(name);
+          harness.toolInputs.push({ name, input: args[0] });
           return t.execute!(...args);
         },
       },

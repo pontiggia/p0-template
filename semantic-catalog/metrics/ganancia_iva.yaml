@@ -1,0 +1,20 @@
+metric: ganancia_iva
+label_es: Ganancia IVA ("IVA win", lo que se gana de IVA en ventas sin factura)
+source: METRICS_SPEC.md §2 + DECISIONS 1 — idéntico a GET /api/v1/metrics/summary → metrics.sales.ivaWinCentavos
+clock: sale.sale_date
+inclusion: "store_id = 1 AND sale.status IN ('pending','paid') AND sale.is_invoiced = false"
+unit: centavos ARS
+definition: |
+  ROUND( Σ unit_cost_centavos × quantity × 0.17 ) sobre líneas de PRODUCTO (nunca servicios) de
+  ventas NO facturadas, con costo conocido. Tasa fija IVA_WIN_RATE = 0.17. Se redondea UNA vez,
+  sobre la suma (redondeo comercial: mitad hacia afuera — round() de Postgres sobre numeric).
+sql: |
+  SELECT round(coalesce(sum(i.unit_cost_centavos * i.quantity)
+                        FILTER (WHERE i.kind = 'product' AND i.unit_cost_centavos IS NOT NULL
+                                AND NOT s.is_invoiced), 0) * 0.17)::bigint AS ganancia_iva_centavos
+  FROM sale_item i
+  JOIN sale s ON s.id = i.sale_id AND s.store_id = 1
+  WHERE i.store_id = 1
+    AND s.status IN ('pending', 'paid')
+    AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+    AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'

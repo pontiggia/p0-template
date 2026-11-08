@@ -1,0 +1,22 @@
+table: cash_movement
+description: Registro de CAJA (movimientos físicos de plata). Append-only. Saldo de caja = SUM(amount_centavos), por method.
+store_scoped: true   # WHERE cash_movement.store_id = 1
+primary_key: id
+sign_convention: "+ entra a la caja; − sale"
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: kind, type: text, enum: [payment_received, expense, income, refund, adjustment, opening_count], description: "ver enums/enums.yaml (cash_kind)" }
+  - { name: method, type: text, enum: [efectivo, credito, debito, transferencia, cheque, "cta cte"] }
+  - { name: amount_centavos, type: bigint, unit: centavos ARS, description: "firmado, en pesos" }
+  - { name: description, type: text }
+  - { name: currency, type: text, enum: [ARS, USD] }
+  - { name: amount_usd_centavos, type: bigint, nullable: true }
+  - { name: fx_rate_centavos, type: bigint, nullable: true }
+  - { name: ledger_entry_id, type: bigint, nullable: true, description: "→ client_ledger_entry.id cuando lo generó un pago de cliente" }
+  - { name: reverses_movement_id, type: bigint, nullable: true, description: "en una reversión (R11): → el movimiento revertido" }
+  - { name: user_id, type: bigint, nullable: true, description: "→ app_user.id" }
+  - { name: local_id, type: integer, nullable: true }
+  - { name: created_at, type: timestamptz, description: "ÚNICA fecha de la tabla (cuándo ocurrió el movimiento); cortar en hora BA" }
+notes:
+  - "Para 'cuánto se cobró' usá el ledger (metrics/cobrado.yaml), no la caja: la caja también tiene egresos, ingresos manuales y ajustes."

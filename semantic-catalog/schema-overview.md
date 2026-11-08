@@ -1,116 +1,98 @@
-# Database Schema Overview
+# Pontimpo — resumen del esquema (gomería, Postgres)
 
-## System Purpose
-This database powers an **e-commerce analytics system** that tracks users, orders, and products. It provides comprehensive reporting capabilities for sales performance, customer behavior, and product analytics.
+Pontimpo es el sistema de una gomería argentina (sucursal principal: **Las Flores, `store_id = 1`**).
+Registra ventas de neumáticos/repuestos y servicios, la cuenta corriente de cada cliente (un
+*ledger* de deuda), la caja, el stock y la auditoría. Fuente de verdad de las fórmulas:
+`metrics/*.yaml` (copia exacta de `METRICS_SPEC.md` y de lo que calcula la API `/api/v1/metrics/*`).
 
-## Core Entities
+## Las 6 reglas de oro (TODA consulta las cumple)
 
-### Primary Tables
-- **users** (~10,000 rows) - Customer information including name, email, signup date
-- **orders** (~450,000 rows) - All customer orders with line items and payment status
-- **products** (~500 rows) - Product catalog with pricing and category information
-- **order_items** (~1,200,000 rows) - Individual line items linking orders to products
+1. **Sucursal**: la base es multi-sucursal. TODA consulta filtra `store_id = 1` (la sucursal de la
+   credencial) en CADA tabla de dominio que toque (`sale`, `sale_item`, `client`, `product`,
+   `service`, `client_ledger_entry`, `cash_movement`, `stock_movement`). Sin excepción, aunque haya JOIN.
+   Solo `exchange_rate` e `inflation_rate` son globales (no tienen `store_id`).
+2. **Plata = BIGINT en centavos** (sufijo `_centavos`). `$148.500,00` = `14850000`. Para mostrar:
+   dividí por 100 y formateá es-AR (`$ 148.500,00`: punto de miles, coma decimal). Nunca uses float
+   para sumar: sumá centavos y dividí al final.
+3. **Ventas anuladas/reembolsadas NO cuentan**: toda métrica de ventas usa
+   `sale.status IN ('pending','paid')`. `cancelled` y `refunded` se excluyen siempre.
+4. **Zona horaria Buenos Aires** (`America/Argentina/Buenos_Aires`, UTC−3 fijo, sin horario de verano).
+   Días, semanas y meses se cortan en hora local. Rango inclusivo [desde, hasta] →
+   `col >= TIMESTAMPTZ 'desde 00:00:00-03' AND col < TIMESTAMPTZ '(hasta+1 día) 00:00:00-03'`.
+5. **Dos relojes distintos**:
+   - métricas de VENTA (venta bruta, ganancia, unidades) → fecha de negocio `sale.sale_date`;
+   - métricas de COBRANZA (cobrado, devuelto, descuentos) → `client_ledger_entry.entry_date`
+     (la plata cuenta cuando se movió, no cuando se vendió).
+6. **Deuda = suma del ledger**: no hay columna de saldo. Deuda de un cliente =
+   `SUM(client_ledger_entry.amount_centavos)` (positivo = debe, negativo = saldo a favor).
 
-### Supporting Tables
-- **categories** (~20 rows) - Product category lookup table
+## Entidades
 
-## Entity Relationships
+| Tabla | Qué es | Filas aprox. (sucursal 1) |
+|---|---|---|
+| `store` | sucursales (1 = Las Flores) | 2 |
+| `client` | clientes; `local_id` = "número de cliente" que usa el personal | ~1.300 |
+| `sale` | ventas (cabecera); `local_id` = "número de venta"; `total_centavos` | ~4.900 |
+| `sale_item` | líneas de venta (producto o servicio), precio, costo congelado | ~4.900 |
+| `product` | catálogo de productos (neumáticos, cámaras, repuestos), stock actual | ~770 |
+| `service` | servicios (mano de obra), sin costo ni stock | 6 |
+| `client_ledger_entry` | **cuenta corriente** (append-only): ventas +, pagos −, etc. | ~12.000 |
+| `cash_movement` | registro de caja (append-only): cobros, egresos, ingresos | ~8.300 |
+| `stock_movement` | movimientos de stock por producto | ~800 |
+| `product_price_history` | historial de precio/costo por producto | ~770 |
+| `exchange_rate` | cotización diaria del dólar blue (global) | — |
+| `inflation_rate` | IPC mensual (global) | — |
+| `audit_event` | auditoría (quién hizo qué; agente + `on_behalf_of`) | — |
+| `app_user` / `store_membership` | personal y su rol por sucursal | 5 |
 
-### Core Data Flow
-1. **Users** place **Orders**
-2. Each **Order** contains one or more **Order Items**
-3. Each **Order Item** references a **Product**
-4. **Products** belong to **Categories**
+Las tablas de autenticación y credenciales (`auth_*`, `api_credential`, `idempotency_key`)
+**no están disponibles** para analítica.
 
-### Key Relationships
-- Each **user** has many **orders** (one-to-many)
-- Each **order** has many **order_items** (one-to-many)
-- Each **order_item** references one **product** (many-to-one)
-- Each **product** belongs to one **category** (many-to-one)
+## Flujo del negocio
 
-## Common Query Patterns
+1. Una **venta** (`sale` + 1..n `sale_item`) genera en el ledger una entrada `kind='sale'` por `+total`.
+2. Los **pagos** son entradas `kind='payment'` con monto **negativo** y `payment_method`
+   (efectivo, credito, debito, transferencia, cheque). Cada pago genera además un
+   `cash_movement(kind='payment_received', +monto)`.
+3. Estado de la venta: `pending` (debe algo) → `paid` (deuda 0). `cancelled` (anulada sin pagos) y
+   `refunded` (reembolsada) quedan fuera de toda métrica.
+4. Las correcciones nunca borran: se agregan entradas inversas (`adjustment`, `cancellation`, `refund`).
 
-### 1. Get Recent Orders with Customer Info
+## Patrones frecuentes (copiá y adaptá)
+
+Venta bruta de octubre de 2026:
 ```sql
-SELECT o.*, u.name, u.email
-FROM orders o
-JOIN users u ON u.id = o.customer_id
-ORDER BY o.created_at DESC
-LIMIT 20;
+SELECT coalesce(sum(s.total_centavos), 0) AS venta_bruta_centavos, count(*) AS cantidad_ventas
+FROM sale s
+WHERE s.store_id = 1
+  AND s.status IN ('pending', 'paid')
+  AND s.sale_date >= TIMESTAMPTZ '2026-10-01 00:00:00-03'
+  AND s.sale_date <  TIMESTAMPTZ '2026-11-01 00:00:00-03'
 ```
 
-### 2. Get Top Selling Products
+Cobrado por método esta semana (lunes a hoy, hora BA):
 ```sql
-SELECT
-  p.name,
-  p.category,
-  SUM(oi.quantity) as units_sold,
-  SUM(oi.quantity * oi.unit_price) as total_revenue
-FROM order_items oi
-JOIN products p ON p.id = oi.product_id
-JOIN orders o ON o.id = oi.order_id
-WHERE o.status NOT IN ('cancelled', 'refunded')
-GROUP BY p.id, p.name, p.category
-ORDER BY total_revenue DESC;
+SELECT l.payment_method, -sum(l.amount_centavos) AS cobrado_centavos
+FROM client_ledger_entry l
+WHERE l.store_id = 1
+  AND l.kind = 'payment'
+  AND l.entry_date >= (date_trunc('week', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires')
+  AND l.entry_date <  ((date_trunc('day', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') + interval '1 day') AT TIME ZONE 'America/Argentina/Buenos_Aires')
+GROUP BY l.payment_method
+ORDER BY cobrado_centavos DESC
 ```
 
-### 3. Get Daily Revenue
+Top deudores:
 ```sql
-SELECT
-  DATE(created_at) as day,
-  COUNT(*) as order_count,
-  SUM(total_amount) as revenue
-FROM orders
-WHERE status NOT IN ('cancelled', 'refunded')
-GROUP BY DATE(created_at)
-ORDER BY day DESC;
+SELECT c.local_id AS numero_cliente, c.name, sum(l.amount_centavos) AS deuda_centavos
+FROM client_ledger_entry l
+JOIN client c ON c.id = l.client_id AND c.store_id = 1
+WHERE l.store_id = 1
+GROUP BY c.id, c.local_id, c.name
+HAVING sum(l.amount_centavos) > 0
+ORDER BY deuda_centavos DESC, c.id
+LIMIT 5
 ```
 
-### 4. Get Customer Lifetime Value
-```sql
-SELECT
-  u.id,
-  u.name,
-  u.email,
-  COUNT(o.id) as total_orders,
-  SUM(o.total_amount) as lifetime_value,
-  MIN(o.created_at) as first_order,
-  MAX(o.created_at) as last_order
-FROM users u
-JOIN orders o ON o.customer_id = u.id
-WHERE o.status NOT IN ('cancelled', 'refunded')
-GROUP BY u.id, u.name, u.email
-ORDER BY lifetime_value DESC;
-```
-
-## Database Patterns
-
-### Audit Columns (All Main Tables)
-- `created_at` - When record was first created (default: now())
-- `updated_at` - When record was last modified (auto-updated via trigger)
-
-### Unique Constraints
-- Users: Unique email address
-- Orders: Unique order number
-- Products: Unique SKU
-
-### Data Types
-| SQL Type | Use Case | Example |
-|----------|----------|---------|
-| `uuid` | Unique identifiers | `gen_random_uuid()` |
-| `varchar` | Variable text | Names, emails |
-| `text` | Long text | Descriptions |
-| `integer` | Whole numbers | Quantities |
-| `numeric(10,2)` | Decimal numbers | Prices, amounts |
-| `timestamp with time zone` | Date + time | Order timestamps |
-| `date` | Date only | Signup dates |
-| `boolean` | True/false | Active flags |
-
-## Reporting Views
-
-### monthly_revenue
-Provides monthly aggregated revenue metrics:
-- Total orders and revenue per month
-- Average order value
-- Unique customers
-- Month-over-month comparison
+Más métricas exactas (ganancia neta, ganancia IVA, deuda viva, ticket promedio, top productos,
+caja…) en `metrics/`. Términos de negocio → SQL en `glossary.md`. Joins en `relationships/joins.yaml`.

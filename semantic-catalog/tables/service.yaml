@@ -1,0 +1,10 @@
+table: service
+description: Servicios / mano de obra (gomería). Sin costo, sin stock, no participan de la Ganancia IVA; en la ganancia neta cuentan completos.
+store_scoped: true   # WHERE service.store_id = 1
+primary_key: id
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: name, type: text }
+  - { name: price_centavos, type: bigint, unit: centavos ARS }
+  - { name: is_active, type: boolean }

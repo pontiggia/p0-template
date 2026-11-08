@@ -29,8 +29,9 @@ BEGIN
     RAISE EXCEPTION 'Potentially dangerous pattern detected';
   END IF;
 
-  -- Execute with row limit
-  EXECUTE format('SELECT jsonb_agg(row_to_json(t)) FROM (%s LIMIT 1000) t', query)
+  -- Execute with row limit. The query is nested as a subquery so its own
+  -- ORDER BY / LIMIT (e.g. "top 5") stay valid under the outer cap.
+  EXECUTE format('SELECT jsonb_agg(row_to_json(t)) FROM (SELECT * FROM (%s) q LIMIT 1000) t', query)
   INTO result;
 
   RETURN COALESCE(result, '[]'::jsonb);

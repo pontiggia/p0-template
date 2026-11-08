@@ -78,20 +78,20 @@ describe.skipIf(!LIVE || !HERMETIC)('seven mutating recipes through the live age
     const id = fx.r2.saleId!;
     await correct(`Registrá el pago total de la venta ${fx.r2.saleLocalId} en efectivo.`);
     const [p] = (await ledgerForSale(id)).filter((e) => e.kind === 'payment');
-    expect(p).toMatchObject({ amount: -9_500_000, payment_method: 'efectivo', credential_id: agentId });
-    expect(p.description).toContain(STAFF.staffName); // R2 takes no on_behalf_of; attribution rides here
+    expect(p).toMatchObject({ amount: -9_500_000, payment_method: 'efectivo', credential_id: agentId, on_behalf_of: STAFF.onBehalfOf });
+    expect(p.description).toContain(STAFF.staffName);
     expect(await cashForLedger([p.id])).toMatchObject([{ kind: 'payment_received', method: 'efectivo', amount: 9_500_000 }]);
     expect((await getSaleAsFixture(id)).status).toBe('paid');
-    expect(await auditFor('sale', id)).toContainEqual(agentAudit('sale.payment_registered', null));
+    expect(await auditFor('sale', id)).toContainEqual(agentAudit('sale.payment_registered'));
   });
 
   it('R4 — register a client-level payment', async () => {
     const c = fx.r4;
     await correct(`El cliente ${c.clientName} (cliente número ${c.clientLocalId}) dejó $5.000 en efectivo a cuenta. Registralo como pago a cuenta del cliente, sin venta.`);
     const [p] = (await ledgerForClient(c.clientId)).filter((e) => e.kind === 'payment');
-    expect(p).toMatchObject({ amount: -500_000, sale_id: null, payment_method: 'efectivo', credential_id: agentId });
+    expect(p).toMatchObject({ amount: -500_000, sale_id: null, payment_method: 'efectivo', credential_id: agentId, on_behalf_of: STAFF.onBehalfOf });
     expect(await cashForLedger([p.id])).toMatchObject([{ method: 'efectivo', amount: 500_000 }]);
-    expect(await auditFor('client', c.clientId)).toContainEqual(agentAudit('client.payment_registered', null));
+    expect(await auditFor('client', c.clientId)).toContainEqual(agentAudit('client.payment_registered'));
   });
 
   it('R5 — cancel an unpaid sale (stock comes back)', async () => {

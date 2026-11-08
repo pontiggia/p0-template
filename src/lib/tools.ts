@@ -71,14 +71,14 @@ export interface ExecuteSQLToolResult {
 
 const EXECUTE_COMMAND_DESCRIPTION =
   `Execute a shell command to explore the semantic layer files.
-The semantic layer is located at /tmp/catalog and contains:
+The semantic layer (Pontimpo, a tire shop) is located at /tmp/catalog and contains:
+- /schema-overview.md - The golden rules (store_id, centavos, status exclusions, Buenos Aires time) + overview
+- /glossary.md - Business terms (Spanish) mapped to SQL, incl. period phrases ("esta semana", "octubre")
+- /metrics/*.yaml - The exact metric formulas (venta bruta, ganancia neta/IVA, cobrado, deuda viva, …)
 - /tables/*.yaml - Table definitions with columns, types, indexes, common queries
-- /views/*.yaml - View definitions with column mappings and example queries
-- /relationships/joins.yaml - Join paths and relationship definitions
-- /enums/enums.yaml - Enum values and mappings
-- /functions/functions-overview.yaml - Available database functions
-- /glossary.md - Business terms mapped to SQL equivalents
-- /schema-overview.md - High-level database overview
+- /relationships/joins.yaml - Join paths and pitfalls
+- /enums/enums.yaml - Enum values and meanings
+- /functions/functions-overview.yaml - The SQL gateway rules + date/format expressions
 
 Available commands: ls, cat, grep, find, head, tail, wc
 Use these to explore and understand the schema before writing SQL.` as const;
@@ -94,8 +94,8 @@ IMPORTANT:
 - Reference the joins.yaml for correct join patterns
 
 Before using this tool:
-1. Explore /tmp/catalog to understand the schema
-2. Check glossary.md for business term mappings
+1. Read /tmp/catalog/schema-overview.md (the golden rules)
+2. Check glossary.md and metrics/*.yaml for the exact formula
 3. Review common_queries in relevant table YAML files
 4. Verify join relationships in relationships/joins.yaml` as const;
 

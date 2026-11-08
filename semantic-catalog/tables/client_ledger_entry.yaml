@@ -1,0 +1,35 @@
+table: client_ledger_entry
+description: |
+  LA CUENTA CORRIENTE (ledger de deuda) de cada cliente. Append-only: nunca se edita ni borra;
+  las correcciones son entradas nuevas inversas. Deuda de un cliente = SUM(amount_centavos).
+  Reloj de las métricas de cobranza: entry_date.
+store_scoped: true   # WHERE client_ledger_entry.store_id = 1
+primary_key: id
+sign_convention: "+ aumenta lo que el cliente debe; − lo disminuye. Saldo negativo = saldo a favor del cliente"
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: client_id, type: bigint, description: "→ client.id" }
+  - { name: kind, type: text, enum: [sale, payment, discount, tax_withholding, opening_balance, adjustment, cancellation, refund], description: "ver enums/enums.yaml (ledger_kind) para signo y significado" }
+  - { name: sale_id, type: bigint, nullable: true, description: "→ sale.id; NULL en pagos a cuenta del cliente y deudas iniciales" }
+  - { name: payment_method, type: text, nullable: true, enum: [efectivo, credito, debito, transferencia, cheque, "cta cte"], description: "solo en pagos (kind='payment') y reembolsos; 'cta cte' es solo histórico" }
+  - { name: amount_centavos, type: bigint, unit: centavos ARS, description: "monto FIRMADO, SIEMPRE en pesos (los pagos en dólares ya convertidos). Todas las sumas usan esta columna" }
+  - { name: currency, type: text, enum: [ARS, USD], description: "'USD' marca un pago hecho en dólares (denominación, no un saldo aparte)" }
+  - { name: amount_usd_centavos, type: bigint, nullable: true, description: "monto en centavos de dólar (solo currency='USD')" }
+  - { name: fx_rate_centavos, type: bigint, nullable: true, description: "cotización usada: centavos de peso por US$ 1 (solo currency='USD')" }
+  - { name: entry_date, type: timestamptz, description: "CUÁNDO SE MOVIÓ LA PLATA. Reloj de cobrado/devuelto/descuentos; cortar en hora BA" }
+  - { name: description, type: text, nullable: true }
+  - { name: local_id, type: integer, nullable: true, description: "número de pago visible (pagos)" }
+  - { name: reverses_entry_id, type: bigint, nullable: true, description: "en una reversión de pago (R11, kind='adjustment'): → el pago revertido" }
+  - { name: created_by_user_id, type: bigint, nullable: true, description: "→ app_user.id si lo cargó una persona en la app" }
+  - { name: created_by_credential_id, type: bigint, nullable: true, description: "credencial de API si lo cargó el agente (no consultar api_credential)" }
+  - { name: on_behalf_of, type: text, nullable: true, description: "email de la persona en cuyo nombre actuó el agente" }
+  - { name: created_at, type: timestamptz, description: "cuándo se insertó la fila (para métricas usar entry_date)" }
+indexes: ["(store_id, entry_date)", "(client_id, entry_date)", "(store_id, client_id, entry_date, kind, amount_centavos)", "(sale_id)", "(kind)"]
+common_queries:
+  cobrado_por_metodo_en_rango: "ver metrics/cobrado.yaml"
+  deuda_viva_y_top_deudores: "ver metrics/deuda_viva.yaml"
+  pagos_de_una_venta: |
+    SELECT l.entry_date, l.payment_method, -l.amount_centavos AS pagado_centavos
+    FROM client_ledger_entry l JOIN sale s ON s.id = l.sale_id AND s.store_id = 1
+    WHERE l.store_id = 1 AND s.local_id = :numero_venta AND l.kind = 'payment'

@@ -1,0 +1,23 @@
+table: sale_item
+description: Línea de venta — un producto o un servicio. Precio unitario cobrado, precio de lista y costo congelados al momento de la venta.
+store_scoped: true   # WHERE sale_item.store_id = 1 (siempre igual al de su venta)
+primary_key: id
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, description: "filtrar = 1" }
+  - { name: sale_id, type: bigint, description: "→ sale.id" }
+  - { name: kind, type: text, enum: [product, service], description: "product → product_id; service → service_id" }
+  - { name: product_id, type: bigint, nullable: true, description: "→ product.id (solo kind='product')" }
+  - { name: service_id, type: bigint, nullable: true, description: "→ service.id (solo kind='service')" }
+  - { name: description, type: text, description: "texto del producto/servicio al momento de la venta (snapshot)" }
+  - { name: quantity, type: integer, description: "unidades (> 0)" }
+  - { name: unit_price_centavos, type: bigint, unit: centavos ARS, description: "precio unitario COBRADO" }
+  - { name: list_price_centavos, type: bigint, unit: centavos ARS, description: "precio de lista al momento de la venta; si difiere de unit_price → 'precio modificado'" }
+  - { name: unit_cost_centavos, type: bigint, nullable: true, unit: centavos ARS, description: "costo unitario CONGELADO a la fecha de venta (productos). NULL en servicios y en 12 líneas históricas (excluidas de la ganancia)" }
+  - { name: total_centavos, type: bigint, unit: centavos ARS, description: "total de la línea" }
+  - { name: created_at, type: timestamptz }
+business_rules:
+  - "Ganancia neta: productos (unit_price − unit_cost) × quantity con costo conocido + servicios total_centavos"
+  - "Ganancia IVA: Σ unit_cost × quantity × 0.17 de líneas de producto de ventas is_invoiced = false"
+  - "Unidades vendidas: solo kind = 'product'"
+  - "Siempre JOIN a sale y filtrar sale.status IN ('pending','paid') + rango por sale.sale_date"

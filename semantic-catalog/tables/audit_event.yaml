@@ -1,0 +1,15 @@
+table: audit_event
+description: Auditoría — quién hizo qué. Las acciones del agente tienen actor_type='agent' y on_behalf_of = email de la persona.
+store_scoped: true   # WHERE audit_event.store_id = 1 (algunas acciones globales tienen store_id NULL)
+columns:
+  - { name: id, type: bigint }
+  - { name: store_id, type: bigint, nullable: true }
+  - { name: actor_type, type: text, enum: [user, agent, system] }
+  - { name: actor_user_id, type: bigint, nullable: true, description: "→ app_user.id" }
+  - { name: actor_credential_id, type: bigint, nullable: true }
+  - { name: on_behalf_of, type: text, nullable: true, description: "persona por la que actuó el agente" }
+  - { name: action, type: text, description: "ej. sale.payment_registered, sale.corrected, sale.cancelled, sale.refunded, sale.payment_reversed, sale.line_swapped, client.payment_registered (catálogo en DOMAIN_SPEC §7)" }
+  - { name: entity_type, type: text, description: "sale, client, product, ..." }
+  - { name: entity_id, type: bigint }
+  - { name: payload, type: jsonb, description: "{before, after} o la fila creada" }
+  - { name: created_at, type: timestamptz }

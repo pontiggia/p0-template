@@ -6,13 +6,18 @@ import { fileURLToPath } from 'node:url';
 // Sandbox, no Anthropic (except the opt-in live suite), loopback-only fetch.
 
 const LIVE = process.env.VITEST_LIVE === '1';
-// PONTIMPO_TARGET=dev: the live suite against the LOCAL pontimpo_dev (migrated
-// real data) — coordinates, the Phase-1 key, the read-only DATABASE_URL and the
-// (fake-number) allowlist all come from the gitignored .env.dev-live.local.
+// PONTIMPO_TARGET=dev: the live suite against a LOCAL copy of the migrated real
+// data — coordinates, the Phase-1 key, the read-only DATABASE_URL and the
+// (fake-number) allowlist all come from a gitignored env file
+// (.env.dev-live.local, or $PONTIMPO_DEV_ENV).
 const DEV = process.env.PONTIMPO_TARGET === 'dev';
 
 // The hermetic Pontimpo app's coordinates + keys (pnpm pontimpo:up writes it).
-const testEnv = fileURLToPath(new URL(DEV ? '../.env.dev-live.local' : '../.env.test.local', import.meta.url));
+// PONTIMPO_DEV_ENV picks another gitignored dev env file (e.g. a fresh copy of
+// pontimpo_dev for a one-pass run): a bare `.env*.local` name in the repo root.
+const devEnv = process.env.PONTIMPO_DEV_ENV ?? '.env.dev-live.local';
+if (DEV && !/^\.env[\w.-]*\.local$/.test(devEnv)) throw new Error(`PONTIMPO_DEV_ENV must be a gitignored .env*.local file name, got ${devEnv}`);
+const testEnv = fileURLToPath(new URL(DEV ? `../${devEnv}` : '../.env.test.local', import.meta.url));
 if (existsSync(testEnv)) process.loadEnvFile(testEnv);
 
 for (const name of [

@@ -65,8 +65,8 @@ export async function processInbound(inbound: InboundMessage): Promise<void> {
     const decision = decideFromInbound(inbound);
 
     if (thread.pending) {
-      if (decision === 'confirm') return handleConfirm(inbound.from, thread.pending);
-      if (decision === 'cancel') return handleCancel(inbound.from);
+      if (decision === 'confirm') return handleConfirm(inbound, thread);
+      if (decision === 'cancel') return handleCancel(inbound, thread);
       // a new substantive message supersedes the stale plan
       await store.clearPending(inbound.from);
       return handleAgent(inbound, identity, { ...thread, pending: null }, 'Descarté la confirmación anterior. ');
@@ -96,16 +96,30 @@ interface Reply {
   readonly buttons?: boolean;
 }
 
-async function handleConfirm(from: string, pending: PendingAction): Promise<Reply> {
-  const store = getSessionStore();
-  const outcome = await executePendingAction(pending);
-  await store.clearPending(from);
-  return { text: outcome.message };
+/**
+ * Close a pending plan and record how it ended in the model's history, so the
+ * next turn knows nothing is staged any more (and, after a failure, that it
+ * must re-read and re-plan instead of pointing at the old plan).
+ */
+async function closePending(inbound: InboundMessage, thread: ThreadState, outcome: string): Promise<Reply> {
+  await getSessionStore().setThread(inbound.from, {
+    history: [
+      ...thread.history,
+      { role: 'user', content: userTextOf(inbound) },
+      { role: 'assistant', content: `${outcome}\n\n(El plan anterior quedó cerrado: no hay nada pendiente de confirmar.)` },
+    ],
+    pending: null,
+  });
+  return { text: outcome };
 }
 
-async function handleCancel(from: string): Promise<Reply> {
-  await getSessionStore().clearPending(from);
-  return { text: 'Listo, cancelado. No toqué nada.' };
+async function handleConfirm(inbound: InboundMessage, thread: ThreadState): Promise<Reply> {
+  const outcome = await executePendingAction(thread.pending as PendingAction);
+  return closePending(inbound, thread, outcome.message);
+}
+
+async function handleCancel(inbound: InboundMessage, thread: ThreadState): Promise<Reply> {
+  return closePending(inbound, thread, 'Listo, cancelado. No toqué nada.');
 }
 
 async function handleAgent(

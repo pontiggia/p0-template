@@ -1,47 +1,25 @@
-functions_summary:
-  total_functions: 1
-  schema: public
-  description: "Stored procedures and functions for secure data access"
+# Cómo se ejecuta el SQL y expresiones útiles.
 
-function_categories:
-  query_execution:
-    count: 1
-    description: "Functions for safe, read-only SQL execution"
-    functions:
-      - name: execute_readonly_sql
-        description: "Execute read-only SQL queries with safety checks"
-        input: "SQL query string (text)"
-        output: "JSONB array of result rows"
-        security: "SECURITY DEFINER with statement_timeout = 5s"
-        safety_checks:
-          - "Blocks write operations (INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, REVOKE)"
-          - "Blocks dangerous patterns (multiple statements, outfile, load_file, pg_sleep, dblink)"
-          - "Enforces 1000 row limit per query"
-          - "5 second timeout on all queries"
-        notes:
-          - "This function is the ONLY way the agent executes SQL"
-          - "Access restricted to service_role only"
-          - "All agent queries are guaranteed read-only through this function"
+gateway:
+  name: execute_readonly_sql(query text) → jsonb
+  description: |
+    executeSQL manda tu SELECT a esta función, que lo envuelve como
+    SELECT jsonb_agg(row_to_json(t)) FROM (SELECT * FROM (<tu consulta>) q LIMIT 1000) t
+    con un timeout de 5 s, conectada con un rol de SOLO LECTURA.
+  rules:
+    - "Una sola sentencia SELECT (o WITH … SELECT). SIN punto y coma final."
+    - "Podés usar tu propio ORDER BY / LIMIT (ej. top 5): se respetan; el tope general es 1000 filas."
+    - "Escrituras (INSERT/UPDATE/DELETE/DDL) están bloqueadas; las correcciones van por la API, nunca por SQL."
+    - "Devolvé montos en centavos (bigint) y, si querés, también el texto formateado (abajo)."
 
-  triggers:
-    count: 1
-    description: "Trigger functions for automatic updates"
-    functions:
-      - name: update_timestamp
-        description: "Update updated_at timestamp on row modification"
-        trigger: "BEFORE UPDATE"
-        updates: "updated_at = NOW()"
-
-common_usage_patterns:
-  agent_query:
-    - "1. Agent receives natural language question"
-    - "2. Agent explores semantic catalog via executeCommand tool"
-    - "3. Agent writes SQL based on verified column names and joins"
-    - "4. SQL executed via execute_readonly_sql() RPC function"
-    - "5. Results returned as JSONB and formatted for user"
-
-function_calling_examples:
-  execute_query:
-    sql: |
-      -- Execute a read-only query through the safety function
-      SELECT execute_readonly_sql('SELECT COUNT(*) as total FROM orders');
+expressions:
+  zona_horaria: "'America/Argentina/Buenos_Aires' (UTC−3 fijo)"
+  inicio_de_hoy: "date_trunc('day', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'"
+  inicio_de_mañana: "(date_trunc('day', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') + interval '1 day') AT TIME ZONE 'America/Argentina/Buenos_Aires'"
+  inicio_de_esta_semana_lunes: "date_trunc('week', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'"
+  inicio_de_este_mes: "date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires'"
+  dia_local_de_una_fecha: "to_char(col AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD')"
+  literal_de_dia: "TIMESTAMPTZ '2026-10-01 00:00:00-03'  -- medianoche de BA"
+  formato_ars: "'$ ' || translate(to_char(<centavos> / 100.0, 'FM999,999,999,990.00'), ',.', '.,')   -- 3731666000 → '$ 37.316.660,00'"
+  formato_usd: "'US$ ' || translate(to_char(<centavos_usd> / 100.0, 'FM999,999,999,990.00'), ',.', '.,')"
+  redondeo_a_centavo: "round(<numeric>)::bigint  -- mitad hacia afuera, igual que la app"

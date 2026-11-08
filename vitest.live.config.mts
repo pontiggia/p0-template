@@ -11,6 +11,8 @@ export default defineConfig({
     env: { VITEST_LIVE: '1' },
     fileParallelism: false,
     testTimeout: 240_000,
+    // One line per test even when not on a TTY (the run's evidence).
+    reporters: ['verbose'],
   },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

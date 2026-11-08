@@ -1,0 +1,28 @@
+metric: cobrado
+label_es: Cobrado del período (cobranza, "cuánto entró", "cuánto se cobró"), por método
+source: METRICS_SPEC.md §3 — idéntico a GET /api/v1/metrics/collected → collectedCentavos y byMethod[]
+clock: client_ledger_entry.entry_date (cuándo se movió la plata, NO la fecha de la venta)
+inclusion: "store_id = 1 AND kind = 'payment'"
+unit: centavos ARS (los pagos en US$ ya están convertidos a pesos en amount_centavos)
+definition: |
+  cobrado = −Σ amount_centavos de las entradas kind = 'payment' del rango (los pagos son negativos
+  en el ledger, por eso el signo menos: el resultado es positivo). Por método: GROUP BY payment_method.
+  No incluye reversiones de pago (kind='adjustment'), reembolsos (kind='refund') ni descuentos/retenciones.
+methods: [efectivo, credito, debito, transferencia, cheque, "cta cte (solo histórico)"]
+sql: |
+  -- Total y por método, esta semana (lunes → hoy, hora BA). Para un mes: literales TIMESTAMPTZ '…-03'.
+  SELECT coalesce(l.payment_method, 'otro') AS metodo,
+         -sum(l.amount_centavos)            AS cobrado_centavos,
+         count(*)                           AS pagos
+  FROM client_ledger_entry l
+  WHERE l.store_id = 1
+    AND l.kind = 'payment'
+    AND l.entry_date >= (date_trunc('week', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') AT TIME ZONE 'America/Argentina/Buenos_Aires')
+    AND l.entry_date <  ((date_trunc('day', now() AT TIME ZONE 'America/Argentina/Buenos_Aires') + interval '1 day') AT TIME ZONE 'America/Argentina/Buenos_Aires')
+  GROUP BY l.payment_method
+  ORDER BY cobrado_centavos DESC
+related:
+  devuelto: "Σ amount_centavos WHERE kind = 'refund' (mismo rango por entry_date)"
+  descuentos: "−Σ amount_centavos WHERE kind = 'discount'"
+  retenciones: "−Σ amount_centavos WHERE kind = 'tax_withholding'"
+  usd: "pagos con currency = 'USD': count(*) y Σ amount_usd_centavos (centavos de dólar)"

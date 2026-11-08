@@ -1,5 +1,5 @@
 // Mints the S6 live-run credentials against the LOCAL pontimpo_dev (migrated
-// real data) through the Pontimpo app's own service — the same
+// real data) or its one-pass copy pontimpo_s6live through the Pontimpo app's own service — the same
 // createCredential() the /admin/credentials dialog calls, as the seeded
 // superadmin@test.local, so the credential.created audit events are real.
 //
@@ -8,8 +8,8 @@
 //     pnpm exec tsx ../d0-template/scripts/mint-pontimpo-dev-credentials.mts <env-file>
 //
 // Appends the keys to <env-file> (must already exist, gitignored, 0600) and
-// never prints them. Refuses any database but pontimpo_dev, and refuses to
-// mint twice into the same env file.
+// never prints them. Refuses any database but a local pontimpo_dev /
+// pontimpo_s6live, and refuses to mint twice into the same env file.
 
 import { appendFileSync, readFileSync, statSync } from "node:fs";
 
@@ -18,8 +18,13 @@ if (!envFile) throw new Error("usage: mint-pontimpo-dev-credentials.mts <env-fil
 if ((statSync(envFile).mode & 0o077) !== 0) throw new Error(`${envFile} must be mode 0600`);
 if (/^PONTIMPO_API_KEY=/m.test(readFileSync(envFile, "utf8"))) throw new Error(`${envFile} already holds a key`);
 
-const dbName = new URL(process.env.DATABASE_URL ?? "").pathname.slice(1);
-if (dbName !== "pontimpo_dev") throw new Error(`refusing: expected pontimpo_dev, got ${dbName}`);
+const dbUrl = new URL(process.env.DATABASE_URL ?? "");
+const dbName = dbUrl.pathname.slice(1);
+// pontimpo_dev, or pontimpo_s6live — a fresh `createdb -T pontimpo_dev` copy for a one-pass run.
+if (!/^pontimpo_(dev|s6live)$/.test(dbName) || dbUrl.hostname !== "localhost") {
+  throw new Error(`refusing: expected local pontimpo_dev / pontimpo_s6live, got ${dbUrl.hostname}/${dbName}`);
+}
+const label = dbName === "pontimpo_dev" ? "S6 dev" : "S6 live";
 
 const { db, pool } = await import("@/db");
 const { appUser, store } = await import("@/db/schema");
@@ -49,10 +54,10 @@ const PHASE_1 = [
   "clients:read", "ledger:read", "audit:read", "products:read",
 ];
 
-const agent = await mint("S6 dev — agente WhatsApp (Phase-1)", PHASE_1);
+const agent = await mint(`${label} — agente WhatsApp (Phase-1)`, PHASE_1);
 // Mutates a sale "behind the agent's back" for the CONFLICT check. Never
 // handed to the agent.
-const fixture = await mint("S6 dev — harness (conflict fixture)", ["sales:read", "sales:correct"]);
+const fixture = await mint(`${label} — harness (conflict fixture)`, ["sales:read", "sales:correct"]);
 
 appendFileSync(envFile, [
   "# Minted by scripts/mint-pontimpo-dev-credentials.mts (store las-flores).",

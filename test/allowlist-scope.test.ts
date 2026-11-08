@@ -70,7 +70,7 @@ describe('scope: what the Phase-1 agent can reach', () => {
     ]);
   });
 
-  it('every mutation tool only stages (no POST) and only targets its recipe endpoint, with on_behalf_of on corrections', async () => {
+  it('every mutation tool only stages (no POST) and only targets its recipe endpoint, with on_behalf_of on every one', async () => {
     const steps: import('@/lib/session/types').PlannedStep[] = [];
     const t = createPontimpoTools({ onBehalfOf: STAFF.onBehalfOf, staffName: STAFF.staffName, corrId: 'c', steps });
     const opts = { toolCallId: 'x', messages: [] } as never;
@@ -87,8 +87,8 @@ describe('scope: what the Phase-1 agent can reach', () => {
       '/sales/1/cancel', '/sales/1/refund', '/sales/1/corrections', '/ledger-entries/1/reverse',
       '/sales/1/line-swaps', '/sales/1/payments', '/clients/1/payments',
     ]);
-    for (const s of steps.slice(0, 5)) expect(s.body.on_behalf_of).toBe(STAFF.onBehalfOf);
-    // R2/R4 take no on_behalf_of (owner decision 2026-06-14): the staff name rides in the description.
+    // Every mutation carries on_behalf_of — payments too (API_SPEC "Attribution", 2026-11-07).
+    for (const s of steps) expect(s.body.on_behalf_of).toBe(STAFF.onBehalfOf);
     for (const s of steps.slice(5)) expect(s.body.description).toContain('En nombre de Oscar Prueba');
     expect(new Set(steps.map((s) => s.idempotencyKey)).size).toBe(7);
   });

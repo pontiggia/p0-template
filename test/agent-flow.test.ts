@@ -111,6 +111,7 @@ describe('R2 — plan, confirm, then nothing applies twice', () => {
     await processInbound(tap('cancel'));
     expect(kapso.lastReply().text).toBe('Listo, cancelado. No toqué nada.');
     expect(await pending()).toBeNull();
+    expect((await getSessionStore().getThread(STAFF.from)).history.at(-1)).toMatchObject({ role: 'assistant', content: expect.stringContaining('Listo, cancelado.') });
     expect(await payments(sale.id)).toEqual([]);
   });
 });
@@ -154,6 +155,11 @@ describe('R7 — the sale changes between plan and confirm', () => {
     expect(report).toContain('Pedímelo de nuevo');
     expect((await getSaleAsFixture(sale.id)).total_centavos).toBe(9_000_000);
     expect(await pending()).toBeNull();
+    // The model's history records how the plan ended, so the next turn re-reads and re-plans.
+    const [tapTurn, outcome] = (await getSessionStore().getThread(STAFF.from)).history.slice(-2);
+    expect(tapTurn).toEqual({ role: 'user', content: 'Confirmar' });
+    expect(outcome).toMatchObject({ role: 'assistant', content: expect.stringContaining('El registro fue modificado por otra persona') });
+    expect(outcome.content).toContain('no hay nada pendiente de confirmar');
 
     // Re-plan from fresh reads: the new snapshot carries the new total.
     harness.model = planCorrection(sale.id, 10_000_000);

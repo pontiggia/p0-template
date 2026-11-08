@@ -24,8 +24,9 @@ import type { PlannedStep } from '../session/types';
  * summary) to `steps` and returns a description. Nothing is mutated until the
  * staff confirms (the confirmation state machine then replays `steps`).
  *
- * `onBehalfOf` and the `corr:<id>` description/reason tags are injected here in
- * code — never supplied by the model.
+ * `onBehalfOf` (on every mutation, payments included — API_SPEC "Attribution")
+ * and the `corr:<id>` description/reason tags are injected here in code —
+ * never supplied by the model.
  */
 export interface PontimpoToolsContext {
   /** the staff identity for `on_behalf_of` (corrections) + description tags */
@@ -48,7 +49,7 @@ function taggedReason(reason: string, ctx: PontimpoToolsContext): string {
   return `${reason} — corr:${ctx.corrId} (en nombre de ${ctx.staffName})`;
 }
 
-/** Compose a payment description: staff + correlation (R2/R4 attribution path). */
+/** Compose a payment description: staff + correlation (human-readable; attribution is on_behalf_of). */
 function paymentDescription(note: string | undefined, ctx: PontimpoToolsContext): string {
   const base = `En nombre de ${ctx.staffName} — corr:${ctx.corrId}`;
   return note ? `${base} — ${note}` : base;
@@ -380,6 +381,7 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
       const body: Record<string, unknown> = {
         payment_method: paymentMethod,
         description: paymentDescription(note, ctx),
+        on_behalf_of: ctx.onBehalfOf,
       };
       let summary: string;
       if (currency === 'USD' || amountUsdCentavos != null) {
@@ -423,6 +425,7 @@ export function createPontimpoTools(ctx: PontimpoToolsContext) {
       const body: Record<string, unknown> = {
         payment_method: paymentMethod,
         description: paymentDescription(note, ctx),
+        on_behalf_of: ctx.onBehalfOf,
       };
       let summary: string;
       if (currency === 'USD' || amountUsdCentavos != null) {

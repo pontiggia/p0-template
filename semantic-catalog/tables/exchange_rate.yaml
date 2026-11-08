@@ -1,0 +1,10 @@
+table: exchange_rate
+description: Cotización diaria del dólar (blue). GLOBAL — no tiene store_id.
+columns:
+  - { name: rate_date, type: date, description: "día (hora BA)" }
+  - { name: type, type: text, description: "'blue'" }
+  - { name: buy_centavos, type: bigint, nullable: true, description: "compra: centavos de peso por US$ 1" }
+  - { name: sell_centavos, type: bigint, description: "venta: centavos de peso por US$ 1 (la que se usa)" }
+  - { name: source, type: text }
+common_queries:
+  ultima_cotizacion: "SELECT rate_date, sell_centavos FROM exchange_rate WHERE type = 'blue' ORDER BY rate_date DESC LIMIT 1"
