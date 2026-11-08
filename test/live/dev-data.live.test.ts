@@ -460,7 +460,7 @@ describe.skipIf(!LIVE)('S6 live — seven recipes, analytics and hard paths on a
     expect((await store.getThread(FROM)).pending).toBeNull();
     expect(harness.toolCalls.filter((t) => MUTATIONS.includes(t))).toEqual([]);
     const sqls = harness.toolInputs.filter((t) => t.name === 'executeSQL').map((t) => (t.input as { sql: string }).sql);
-    expect(sqls.length, 'answered from the read-only SQL path').toBeGreaterThan(0);
+    expect(sqls.length, `answered from the read-only SQL path — reply was: ${reply.text}`).toBeGreaterThan(0);
     for (const s of sqls) expect(s, 'every query is store-scoped').toMatch(/store_id\s*=\s*1\b/);
     expect(await delta(m)).toEqual({ ledger: [], cash: [], stock: [], audit: [] });
     return { answer: reply.text, sqls: sqls.length };
