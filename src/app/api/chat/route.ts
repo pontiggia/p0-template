@@ -18,6 +18,13 @@ export const maxDuration: number = 180;
 const MAX_RETRIES = 3;
 
 export async function POST(req: NextRequest): Promise<Response> {
+  // Dev/test surface only: it has no login, and in production it would let
+  // anyone query the business data and spend the API key. The WhatsApp
+  // webhook (allowlisted numbers) is the only production entry point.
+  if (process.env.NODE_ENV === 'production') {
+    return new Response(null, { status: 404 });
+  }
+
   console.log('[Chat API] Tools available:', Object.keys(agentTools));
 
   try {
