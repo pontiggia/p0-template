@@ -1,9 +1,10 @@
 import {
   streamText,
   convertToModelMessages,
-  stepCountIs,
+  createUIMessageStreamResponse,
+  isStepCount,
+  toUIMessageStream,
   type UIMessage,
-  type ModelMessage,
 } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { agentTools } from '@/lib/tools';
@@ -25,26 +26,26 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     const modelMessages = await convertToModelMessages(messages);
 
-    const messagesWithSystem: ModelMessage[] = [
-      {
+    // v7 rejects system messages inside `messages`; the prompt (with its
+    // cache breakpoint) goes in `instructions`.
+    const result = streamText({
+      model: anthropic(MODEL_ID),
+      instructions: {
         role: 'system',
         content: SYSTEM_PROMPT,
         providerOptions: {
           anthropic: { cacheControl: { type: 'ephemeral' } },
         },
       },
-      ...modelMessages,
-    ];
-
-    const result = streamText({
-      model: anthropic(MODEL_ID),
-      messages: messagesWithSystem,
+      messages: modelMessages,
       tools: agentTools,
       maxRetries: MAX_RETRIES,
-      stopWhen: stepCountIs(15),
+      stopWhen: isStepCount(15),
     });
 
-    return result.toUIMessageStreamResponse();
+    return createUIMessageStreamResponse({
+      stream: toUIMessageStream({ stream: result.stream }),
+    });
   } catch (error) {
     if (error instanceof Error && error.message.includes('429')) {
       console.error('[Chat API] Rate limit exceeded:', error.message);

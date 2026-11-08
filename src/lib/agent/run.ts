@@ -1,4 +1,4 @@
-import { generateText, stepCountIs, type ModelMessage } from 'ai';
+import { generateText, isStepCount, type ModelMessage } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { randomUUID } from 'node:crypto';
 import { executeCommand, executeSQL } from '../tools';
@@ -60,16 +60,17 @@ export async function runAgentTurn(input: RunInput): Promise<RunResult> {
 
   const result = await generateText({
     model: anthropic(MODEL_ID),
-    system: buildWaSystemPrompt({ staffName: input.staffName, storeId: input.storeId }),
+    instructions: buildWaSystemPrompt({ staffName: input.staffName, storeId: input.storeId }),
     messages,
     tools,
-    stopWhen: stepCountIs(MAX_STEPS),
+    stopWhen: isStepCount(MAX_STEPS),
   });
 
   return {
     text: result.text,
     steps,
     corrId,
-    messages: [...messages, ...result.response.messages],
+    // v7: response.messages is the final step only; responseMessages is all steps.
+    messages: [...messages, ...result.responseMessages],
   };
 }

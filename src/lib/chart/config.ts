@@ -18,7 +18,7 @@ export const chartConfigSchema = z.object({
     .min(1)
     .max(10),
   data: z
-    .array(z.record(z.union([z.string(), z.number()])))
+    .array(z.record(z.string(), z.union([z.string(), z.number()])))
     .min(1)
     .max(2000),
 });

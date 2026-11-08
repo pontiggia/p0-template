@@ -19,7 +19,7 @@ export interface SQLError {
 
 export type SQLResult = SQLSuccess | SQLError;
 
-const SQLResponseSchema = z.array(z.record(z.unknown())).nullable();
+const SQLResponseSchema = z.array(z.record(z.string(), z.unknown())).nullable();
 
 export async function executeReadOnlySQL(query: string): Promise<SQLResult> {
   const startTime: number = Date.now();

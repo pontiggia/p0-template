@@ -45,3 +45,6 @@ prompt.txt
 # Testing
 coverage/
 .nyc_output/
+
+# Hermetic Pontimpo test app (scripts/pontimpo-test-app.sh)
+.pontimpo-test-app.*

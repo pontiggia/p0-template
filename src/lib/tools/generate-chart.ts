@@ -25,7 +25,7 @@ const chartInputSchema = z.object({
     .min(1)
     .describe('One or more data series to plot'),
   data: z
-    .array(z.record(z.union([z.string(), z.number()])))
+    .array(z.record(z.string(), z.union([z.string(), z.number()])))
     .min(1)
     .max(2000)
     .describe('Array of data points (max 2000 points)'),
